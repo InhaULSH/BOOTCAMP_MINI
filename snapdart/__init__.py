@@ -1,0 +1,1 @@
+"""SnapDART local report prototype."""
