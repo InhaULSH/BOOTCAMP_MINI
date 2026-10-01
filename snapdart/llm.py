@@ -2,15 +2,26 @@
 import hashlib
 import json
 import os
+import random
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from .config import DATA, YEARS, load_env
 from .collect import save_json
 
-load_env()
 PROVIDER = os.getenv('LLM_PROVIDER', 'gemini').lower()
-MODEL = os.getenv('OLLAMA_MODEL', 'qwen3.5:9b-q4_K_M') if PROVIDER == 'ollama' else 'gemini-3.5-flash-lite'
+
+if PROVIDER == 'ollama':
+    MODEL = os.getenv(
+        'OLLAMA_MODEL',
+        'qwen3.5:9b-q4_K_M'
+    )
+else:
+    MODEL = os.getenv(
+        'GEMINI_MODEL',
+        'gemini-3.5-flash-lite'
+    )
+
 CACHE_PROFILE = [PROVIDER, MODEL, os.getenv('OLLAMA_NUM_CTX', '131072'), os.getenv('OLLAMA_NUM_BATCH','32'), os.getenv('OLLAMA_NUM_PREDICT','8192'), 'local-v2']
 PROMPT_VERSION = 'report-v4-hierarchical'
 STAGES = ['기대·전망', '투자·개발 계획', '실행·공급', '매출·수익 기여', '복합·판단 유보']
@@ -80,8 +91,22 @@ def validate_report(value, evidence):
         ids = item.get('evidence_ids')
         if not isinstance(ids,list) or not 1 <= len(ids) <= 6 or any(not isinstance(x,str) or x not in refs for x in ids):
             raise ValueError(f'입력에 없는 근거 ID 또는 개수/형식 오류: {ids!r}')
-        if year is not None and any(refs[x] != year for x in ids):
-            raise ValueError('연도별 분석의 근거 연도 불일치')
+        if year is not None:
+            mismatched = [
+                {
+                    'id': x,
+                    'actual_year': refs[x]
+                }
+                for x in ids
+                if refs[x] != year
+            ]
+
+            if mismatched:
+                raise ValueError(
+                    f'연도별 분석의 근거 연도 불일치: '
+                    f'timeline_year={year}, '
+                    f'mismatched={mismatched}'
+                )
     text_fields(value, ['comparison'])
     cards = value.get('cards', [])
     timeline = value.get('timeline', [])
@@ -142,36 +167,61 @@ class InputTooLarge(RuntimeError):
 
 
 class TokenBudget:
-    """Single-process rolling input budget; startup cooldown covers immediate restarts."""
     def __init__(self):
         self.events = []
-        self.ready_at = None
 
     def reserve(self, tokens):
-        limit = int(os.getenv('GEMINI_TPM_BUDGET', '225000'))
+        tpm_limit = int(
+            os.getenv('GEMINI_TPM_BUDGET', '225000')
+        )
+        rpm_limit = int(
+            os.getenv('GEMINI_RPM_BUDGET', '10')
+        )
+
         reserved = int(tokens * 1.05) + 1024
-        if reserved > limit:
-            raise InputTooLarge(f'단일 요청 입력 {tokens:,}토큰이 안전 예산 {limit:,}을 초과합니다. '
-                               '대기로 해결되지 않습니다. 입력을 분할하거나 실제 한도를 확인해 GEMINI_TPM_BUDGET을 조정하세요.')
-        if self.ready_at is None:
-            self.ready_at = time.monotonic() + 61
+
+        if reserved > tpm_limit:
+            raise InputTooLarge(
+                f'단일 요청 입력 {tokens:,}토큰이 '
+                f'설정된 TPM 예산 {tpm_limit:,}을 초과합니다.'
+            )
+
         while True:
             now = time.monotonic()
-            self.events = [(t, n) for t, n in self.events if now-t < 61]
-            delay = max(0, self.ready_at-now)
-            if len(self.events) >= 12:
-                delay = max(delay, self.events[0][0]+61-now)
-            if sum(n for _, n in self.events)+reserved > limit:
-                delay = max(delay, self.events[0][0]+61-now)
-            if delay <= 0:
+
+            self.events = [
+                (t, n)
+                for t, n in self.events
+                if now - t < 60
+            ]
+
+            token_usage = sum(n for _, n in self.events)
+
+            rpm_ok = len(self.events) < rpm_limit
+            tpm_ok = token_usage + reserved <= tpm_limit
+
+            if rpm_ok and tpm_ok:
                 self.events.append((now, reserved))
                 return
-            print(f'입력 {tokens:,}토큰 · 사용량 제한을 위해 {delay:.0f}초 대기', flush=True)
-            time.sleep(min(delay, 30))
 
+            if not self.events:
+                raise InputTooLarge(
+                    '현재 요청이 설정된 Gemini 사용량 예산을 초과합니다.'
+                )
+
+            delay = max(
+                0.1,
+                self.events[0][0] + 60 - now
+            )
+
+            print(
+                f'Gemini 사용량 제한 보호 · '
+                f'{delay:.1f}초 대기',
+                flush=True
+            )
+            time.sleep(min(delay, 10))
 
 TOKEN_BUDGET = TokenBudget()
-
 
 def gemini_http_message(error, key):
     """Expose useful API diagnostics without printing credentials or response metadata."""
@@ -195,51 +245,96 @@ def gemini_http_message(error, key):
         action = 'API 키·모델·요청 설정을 확인하세요.'
     return f'Gemini HTTP {error.code}: {action} Google 응답: {message or "상세 메시지 없음"} 기존 보고서는 보존됩니다.'
 
+def retry_delay(attempt, base=2.0, maximum=60.0):
+    """Exponential backoff with small jitter."""
+    delay = min(maximum, base * (2 ** attempt))
+    jitter = random.uniform(0, min(1.0, delay * 0.1))
+    return delay + jitter
 
 def count_input_tokens(payload, key):
-    request = Request(f'https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:countTokens',
-                      data=json.dumps({'generateContentRequest':dict(payload, model='models/'+MODEL)}).encode('utf-8'),
-                      headers={'Content-Type':'application/json','x-goog-api-key':key}, method='POST')
+    generate_request = dict(payload)
+    generate_request['model'] = f'models/{MODEL}'
+
+    body = {
+        'generateContentRequest': generate_request
+    }
+
+    request = Request(
+        f'https://generativelanguage.googleapis.com/'
+        f'v1beta/models/{MODEL}:countTokens',
+        data=json.dumps(body).encode('utf-8'),
+        headers={
+            'Content-Type': 'application/json',
+            'x-goog-api-key': key,
+        },
+        method='POST',
+    )
+
     for attempt in range(3):
         try:
             with urlopen(request, timeout=90) as response:
                 count = json.load(response).get('totalTokens')
-            if not isinstance(count, int) or isinstance(count, bool) or count < 0:
-                raise ValueError('invalid token count')
-            return count
-        except (HTTPError, URLError, TimeoutError, ValueError) as error:
-            retryable = not isinstance(error, ValueError) and (not isinstance(error, HTTPError) or error.code in (429,500,502,503,504))
-            if retryable and attempt < 2:
-                delay = 61 if isinstance(error, HTTPError) and error.code == 429 else 5*(attempt+1)
-                print(f'입력 토큰 계산 재시도 · {delay}초 대기', flush=True)
-                while delay > 0:
-                    time.sleep(min(delay,30))
-                    delay -= min(delay,30)
-                continue
-            if isinstance(error, HTTPError):
-                raise RuntimeError(gemini_http_message(error, key)) from None
-            raise RuntimeError('Gemini 입력 토큰 계산 실패. 생성 요청은 보내지 않았습니다. 잠시 후 재실행하세요.') from None
 
+            if (
+                not isinstance(count, int)
+                or isinstance(count, bool)
+                or count < 0
+            ):
+                raise ValueError('invalid token count')
+
+            return count
+
+        except (HTTPError, URLError, TimeoutError, ValueError) as error:
+            if isinstance(error, HTTPError):
+                retryable = error.code in (
+                    408,
+                    429,
+                    500,
+                    502,
+                    503,
+                    504,
+                )
+            else:
+                retryable = isinstance(
+                    error,
+                    (URLError, TimeoutError)
+                )
+
+            if retryable and attempt < 2:
+                delay = retry_delay(attempt)
+
+                if isinstance(error, HTTPError):
+                    reason = f'HTTP {error.code}'
+                else:
+                    reason = type(error).__name__
+
+                print(
+                    f'Gemini 입력 토큰 계산 실패 ({reason}) · '
+                    f'{delay:.1f}초 후 재시도',
+                    flush=True,
+                )
+
+                time.sleep(delay)
+                continue
+
+            if isinstance(error, HTTPError):
+                raise RuntimeError(
+                    gemini_http_message(error, key)
+                ) from None
+
+            raise RuntimeError(
+                'Gemini 입력 토큰 계산 실패. '
+                '생성 요청은 보내지 않았습니다.'
+            ) from None
 
 
 def citation_schema(schema, evidence):
     import copy
-    result = copy.deepcopy(schema)
-    ids = list(dict.fromkeys(e['id'] for e in evidence))
-    if not ids:
+
+    if not evidence:
         raise ValueError('인용 가능한 근거가 없습니다.')
-    def visit(node):
-        if isinstance(node, dict):
-            refs = node.get('properties', {}).get('evidence_ids')
-            if refs is not None:
-                refs['items'] = {'type': 'string', 'enum': ids}
-            for value in node.values():
-                visit(value)
-        elif isinstance(node, list):
-            for value in node:
-                visit(value)
-    visit(result)
-    return result
+
+    return copy.deepcopy(schema)
 
 
 def model_context(context):
@@ -253,18 +348,96 @@ def model_context(context):
     return compact_context(clean(context))
 
 
-def request_report(context, evidence, draft=None, schema=None, instruction=None, validator=None, _repair=None):
+def request_report(
+    context,
+    evidence,
+    draft=None,
+    schema=None,
+    instruction=None,
+    validator=None,
+    _repair=None
+):
     load_env()
+
     key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
+
     if PROVIDER == 'gemini' and not key:
         raise RuntimeError('.env에 GEMINI_API_KEY가 필요합니다.')
+
     compact = model_context(context)
-    content = compact if draft is None else dict(materials=compact, draft=draft, task=REVIEW)
+
+    if draft is None:
+        content = compact
+    else:
+        content = dict(
+            materials=compact,
+            draft=draft,
+            task=REVIEW
+        )
+
+    # 검증 실패 후 재요청일 때만 content를 보강
     if _repair is not None:
-        content = dict(materials=content, correction=_repair, task='검증 오류를 수정한 전체 JSON을 반환한다. 임의 ID 치환 금지. 실제 근거가 지지하는 내용만 유지하고 timeline은 같은 연도 근거를 사용한다.')
-    payload = {'systemInstruction': {'parts':[{'text':(instruction or SYSTEM) + '\ntext_ref는 같은 기업의 동일 문장 ID다. 그 ID의 text를 읽되 현재 항목의 기간과 ID로 인용한다. 반복 등장을 새 사건으로 세지 않는다.' + ('\n'+REVIEW if draft else '')}]},
-               'contents':[{'role':'user','parts':[{'text':json.dumps(content,ensure_ascii=False)}]}],
-               'generationConfig': {'responseMimeType':'application/json','responseJsonSchema':citation_schema(schema or SCHEMA, evidence),'maxOutputTokens':14000}}
+        allowed_ids_by_year = {}
+
+        for item in evidence:
+            year = item.get('year')
+            evidence_id = item.get('id')
+
+            if year is not None and evidence_id:
+                allowed_ids_by_year.setdefault(str(year), []).append(evidence_id)
+
+        content = dict(
+            materials=content,
+            correction=_repair,
+            allowed_timeline_evidence_ids=allowed_ids_by_year,
+            task=(
+                '검증 오류를 수정한 전체 JSON을 반환한다. '
+                '기존 JSON의 구조를 유지하되 검증 오류가 있는 부분을 수정한다. '
+                'evidence_ids에는 제공된 실제 ID만 사용한다. '
+                'timeline의 각 항목은 해당 year에 속한 ID만 사용한다.'
+            )
+        )
+
+    # 반드시 if _repair 블록 밖에서 생성
+    system_text = (
+        (instruction or SYSTEM)
+        + '\ntext_ref는 같은 기업의 동일 문장 ID다. '
+          '그 ID의 text를 읽되 현재 항목의 기간과 ID로 인용한다. '
+          '반복 등장을 새 사건으로 세지 않는다.'
+    )
+
+    if draft is not None:
+        system_text += '\n' + REVIEW
+
+    payload = {
+        'systemInstruction': {
+            'parts': [
+                {'text': system_text}
+            ]
+        },
+        'contents': [
+            {
+                'role': 'user',
+                'parts': [
+                    {
+                        'text': json.dumps(
+                            content,
+                            ensure_ascii=False
+                        )
+                    }
+                ]
+            }
+        ],
+        'generationConfig': {
+            'responseMimeType': 'application/json',
+            'responseJsonSchema': citation_schema(
+                schema or SCHEMA,
+                evidence
+            ),
+            'maxOutputTokens': 14000,
+        }
+    }
+
     if PROVIDER == 'ollama':
         from .local_llm import generate
         body = generate(payload, MODEL)
@@ -280,37 +453,128 @@ def request_report(context, evidence, draft=None, schema=None, instruction=None,
                     body = json.load(response)
                 break
             except HTTPError as error:
-                if error.code in (429,500,502,503,504) and attempt < 2:
-                    delay = 61 if error.code == 429 else 5 * (attempt+1)
-                    print(f'Gemini HTTP {error.code} · {delay}초 후 재시도', flush=True)
-                    while delay > 0:
-                        time.sleep(min(delay, 30))
-                        delay -= min(delay, 30)
+                retryable = error.code in (
+                    408, 429, 500, 502, 503, 504
+                )
+
+                if retryable and attempt < 2:
+                    delay = retry_delay(attempt)
+
+                    print(
+                        f'Gemini HTTP {error.code} · '
+                        f'{delay:.1f}초 후 재시도',
+                        flush=True
+                    )
+
+                    time.sleep(delay)
                     continue
-                raise RuntimeError(gemini_http_message(error, key)) from None
-            except (URLError,TimeoutError):
+
+                raise RuntimeError(
+                    gemini_http_message(error, key)
+                ) from None
+            except (URLError, TimeoutError) as error:
                 if attempt < 2:
-                    time.sleep(3 * (attempt+1))
+                    delay = retry_delay(attempt)
+
+                    print(
+                        f'Gemini 네트워크 오류 '
+                        f'({type(error).__name__}) · '
+                        f'{delay:.1f}초 후 재시도',
+                        flush=True,
+                    )
+
+                    time.sleep(delay)
                     continue
-                raise RuntimeError('Gemini 네트워크 연결 실패. 기존 보고서는 보존됩니다.') from None
+
+                raise RuntimeError(
+                    'Gemini 네트워크 연결 실패. '
+                    '기존 보고서는 보존됩니다.'
+                ) from None
     else:
         raise RuntimeError('LLM_PROVIDER는 ollama 또는 gemini여야 합니다.')
+
     text = ''
+    finish_reason = None
+
     try:
         candidate = body['candidates'][0]
-        if candidate.get('finishReason') != 'STOP':
-            raise ValueError('불완전한 모델 응답')
-        text = ''.join(p.get('text','') for p in candidate['content']['parts'] if not p.get('thought'))
-        report = (validator or validate_report)(json.loads(text),evidence)
-        return dict(report=report, usage=body.get('usageMetadata',{}), model=body.get('modelVersion',MODEL))
-    except (KeyError,IndexError,TypeError,ValueError) as error:
-        diagnostic = dict(error=str(error), response=text, allowed_ids=[dict(id=e['id'],year=e['year']) for e in evidence])
-        name = hashlib.sha256(json.dumps(diagnostic,ensure_ascii=False).encode()).hexdigest()
-        save_json(DATA / 'llm_errors' / (name+'.json'), diagnostic)
+        finish_reason = candidate.get('finishReason')
+
+        if finish_reason != 'STOP':
+            raise ValueError(
+                'Gemini 응답이 정상 종료되지 않았습니다. '
+                f'finishReason={finish_reason!r}'
+            )
+
+        text = ''.join(
+            p.get('text', '')
+            for p in candidate['content']['parts']
+            if not p.get('thought')
+        )
+
+        report = (validator or validate_report)(
+            json.loads(text),
+            evidence
+        )
+
+        return dict(
+            report=report,
+            usage=body.get('usageMetadata', {}),
+            model=body.get('modelVersion', MODEL)
+        )
+
+    except (KeyError, IndexError, TypeError, ValueError) as error:
+        diagnostic = dict(
+            error=str(error),
+            finish_reason=finish_reason,
+            response=text,
+            allowed_ids=[
+                {
+                    'id': e['id'],
+                    'year': e['year']
+                }
+                for e in evidence
+            ],
+            rule=(
+                'timeline 각 항목의 evidence_ids는 '
+                '그 timeline 항목의 year와 동일한 year의 '
+                '근거만 허용'
+            )
+        )
+
+        name = hashlib.sha256(
+            json.dumps(
+                diagnostic,
+                ensure_ascii=False
+            ).encode()
+        ).hexdigest()
+
+        save_json(
+            DATA / 'llm_errors' / (name + '.json'),
+            diagnostic
+        )
+
         if _repair is None:
-            print('분석 응답 검증 실패 · 근거 목록으로 한 차례 교정합니다.', flush=True)
-            return request_report(context, evidence, draft=draft, schema=schema, instruction=instruction, validator=validator, _repair=diagnostic)
-        raise RuntimeError(f'LLM 결과 검증 실패: {error}. 기존 보고서는 보존됩니다.') from None
+            print(
+                '분석 응답 검증 실패 · '
+                '근거 목록으로 한 차례 교정합니다.',
+                flush=True
+            )
+
+            return request_report(
+                context,
+                evidence,
+                draft=draft,
+                schema=schema,
+                instruction=instruction,
+                validator=validator,
+                _repair=diagnostic
+            )
+
+        raise RuntimeError(
+            f'LLM 결과 검증 실패: {error}. '
+            '기존 보고서는 보존됩니다.'
+        ) from None
 
 def cached_report(context, evidence, force=False):
     digest = hashlib.sha256(json.dumps([CACHE_PROFILE,MODEL,PROMPT_VERSION,SYSTEM,SCHEMA,context],ensure_ascii=False,sort_keys=True).encode()).hexdigest()

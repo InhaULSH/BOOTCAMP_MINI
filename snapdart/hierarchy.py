@@ -5,9 +5,24 @@ from . import llm
 from .collect import save_json
 
 CHARS = 16000
-SUMMARY_SCHEMA = llm.object_schema({'items': {'type': 'array', 'minItems': 1, 'maxItems': 3 if llm.PROVIDER == 'ollama' else 6,
-    'items': llm.object_schema({'text': {'type': 'string', 'maxLength': 350 if llm.PROVIDER == 'ollama' else 650},
-                              'evidence_ids': llm.REFS})}})
+
+SUMMARY_MAX_ITEMS = 3 if llm.PROVIDER == 'ollama' else 6
+SUMMARY_TEXT_MAX = 350 if llm.PROVIDER == 'ollama' else 650
+
+SUMMARY_SCHEMA = llm.object_schema({
+    'items': {
+        'type': 'array',
+        'minItems': 1,
+        'maxItems': SUMMARY_MAX_ITEMS,
+        'items': llm.object_schema({
+            'text': {
+                'type': 'string'
+            },
+            'evidence_ids': llm.REFS
+        })
+    }
+})
+
 INSTRUCTION = llm.SYSTEM.split('summary:')[0] + '''
 이번 작업은 최종 보고서가 아니라 입력 묶음의 근거 요약이다. items만 반환한다.
 수요·제품·투자·위험의 중요한 사실과 변화, 회사 전망/계획/실행의 구분을 보존한다.
@@ -25,14 +40,26 @@ if llm.PROVIDER == 'ollama':
 def validate(value, evidence):
     ids = {e['id'] for e in evidence}
     items = value.get('items') if isinstance(value, dict) else None
-    if not isinstance(items, list) or not 1 <= len(items) <= SUMMARY_SCHEMA['properties']['items']['maxItems']:
+
+    if not isinstance(items, list) or not 1 <= len(items) <= SUMMARY_MAX_ITEMS:
         raise ValueError('중간 요약 개수 오류')
+
     for item in items:
-        if not isinstance(item, dict) or not isinstance(item.get('text'), str) or not 1 <= len(item['text']) <= SUMMARY_SCHEMA['properties']['items']['items']['properties']['text']['maxLength']:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get('text'), str)
+            or not 1 <= len(item['text']) <= SUMMARY_TEXT_MAX
+        ):
             raise ValueError('중간 요약 길이 오류')
+
         refs = item.get('evidence_ids')
-        if not isinstance(refs, list) or not 1 <= len(refs) <= 6 or any(not isinstance(r, str) or r not in ids for r in refs):
+        if (
+            not isinstance(refs, list)
+            or not 1 <= len(refs) <= 6
+            or any(not isinstance(r, str) or r not in ids for r in refs)
+        ):
             raise ValueError('중간 요약 근거 오류')
+
     return value
 
 
