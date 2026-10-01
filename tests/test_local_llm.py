@@ -7,11 +7,11 @@ from snapdart.llm import InputTooLarge
 class LocalTests(unittest.TestCase):
     def test_report_uses_local_transport_without_gemini(self):
         from snapdart.llm import request_report
-        from test_llm import fixture
-        report, evidence = fixture()
+        report={"answer":"입력 자료 요약", "refs":["t1"]}
+        evidence=[dict(id="t1",year=2025,text="입력 자료")]
         body = dict(candidates=[dict(finishReason='STOP',content={'parts':[{'text':json.dumps(report)}]})])
         with patch('snapdart.llm.PROVIDER','ollama'), patch('snapdart.local_llm.generate',return_value=body) as local, patch('snapdart.llm.count_input_tokens') as count, patch('snapdart.llm.TOKEN_BUDGET.reserve') as budget:
-            self.assertEqual(request_report(dict(evidence=evidence),evidence)['report'],report)
+            self.assertEqual(request_report(dict(evidence=evidence),evidence,schema={"type":"object"},instruction="입력 자료만 사용",validator=lambda v,e:v)['report'],report)
             local.assert_called_once()
             count.assert_not_called()
             budget.assert_not_called()
@@ -45,6 +45,16 @@ class LocalTests(unittest.TestCase):
         with patch.dict('os.environ',{'OLLAMA_BASE_URL':'https://example.com'}):
             with self.assertRaisesRegex(RuntimeError,'localhost'):
                 generate(self.payload(),'model')
+
+    def test_explicit_generation_options_are_used(self):
+        response=MagicMock()
+        response.__enter__.return_value.read.return_value=b'{"done":true,"done_reason":"stop","message":{"content":"{}"}}'
+        payload=self.payload();payload['generationConfig'].update(maxOutputTokens=500,temperature=1)
+        with patch('snapdart.local_llm.urlopen',return_value=response) as call:
+            generate(payload,'model')
+        options=json.loads(call.call_args.args[0].data)['options']
+        self.assertEqual(options['num_predict'],500)
+        self.assertEqual(options['temperature'],1)
 
     def test_truncated_response_not_accepted(self):
         response=MagicMock()

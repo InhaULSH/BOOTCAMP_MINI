@@ -13,7 +13,7 @@ def generate(payload, model):
     if urlparse(base).hostname not in ('127.0.0.1', 'localhost', '::1'):
         raise RuntimeError('로컬 분석 주소에는 localhost만 사용할 수 있습니다.')
     ctx = int(os.getenv('OLLAMA_NUM_CTX', '131072'))
-    output = int(os.getenv('OLLAMA_NUM_PREDICT', '8192'))
+    output = min(int(os.getenv('OLLAMA_NUM_PREDICT', '8192')), payload['generationConfig'].get('maxOutputTokens', 8192))
     system = payload['systemInstruction']['parts'][0]['text']
     content = payload['contents'][0]['parts'][0]['text']
     schema = payload['generationConfig']['responseJsonSchema']
@@ -24,7 +24,7 @@ def generate(payload, model):
         raise InputTooLarge(f'로컬 입력 보수적 상한 {estimate:,} + 출력 {output:,}이 문맥 {ctx:,}을 초과합니다.')
     body = dict(model=model, stream=False, think=False, keep_alive='30m', format=schema,
                 messages=[dict(role='system',content=system),dict(role='user',content=content)],
-                options=dict(num_ctx=ctx,num_predict=output,temperature=0.1,seed=42,num_batch=int(os.getenv('OLLAMA_NUM_BATCH','32'))))
+                options=dict(num_ctx=ctx,num_predict=output,temperature=payload['generationConfig'].get('temperature',1),seed=42,num_batch=int(os.getenv('OLLAMA_NUM_BATCH','32'))))
     request = Request(base+'/api/chat',data=json.dumps(body).encode('utf-8'),
                       headers={'Content-Type':'application/json'},method='POST')
     for attempt in range(3):

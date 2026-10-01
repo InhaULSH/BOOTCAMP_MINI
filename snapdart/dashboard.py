@@ -2,7 +2,8 @@
 import copy
 import json
 import math
-from .config import ROOT, DATA
+from . import config  # Register the shared pipeline path before importing it.
+from snapdart_data.pipeline import growth
 from .market import category
 
 METRICS = [('revenue_growth', '매출 성장률'), ('margin', '영업이익률'),
@@ -48,11 +49,17 @@ def trend_summary(history):
 def build_view(report, market=None):
     data = copy.deepcopy(report)
     market = market or {}
-    weights = market.get('index', {}).get('weights', {})
+    weights = market.get('representative_weights', market.get('index', {}).get('weights', {}))
     for company in data['companies']:
         for row in company['history']:
             revenue, fcf = row.get('revenue'), row.get('fcf')
             row['fcf_margin'] = fcf/revenue*100 if finite(fcf) and finite(revenue) and revenue>0 else None
+        for i,row in enumerate(company['history']):
+            if 'yoy' in row:continue
+            previous=company['history'][i-1] if i else {}
+            comparable=bool(previous) and previous.get('basis')==row.get('basis')
+            row['yoy']={key:growth(row.get(key),previous.get(key)) if comparable else None
+                for key in ('revenue','operating_income','capex','operating_cashflow')}
         company['trend_summary'] = trend_summary(company['history'])
     history = []
     for year in data['years']:
@@ -60,21 +67,30 @@ def build_view(report, market=None):
         history.append(dict(year=year, **{key:weighted(rows,weights,key) for key,_ in METRICS}))
     data['weighted_history'] = history
     data['trend_summary'] = trend_summary(history)
-    data['market'] = market
+    data['market'] = copy.deepcopy(market)
+    from .market import close_snapshot
+    # Old saved intraday quotes must not reappear when a refresh fails.
+    for quote in list(data['market'].get('quotes',{}).values())+[data['market'].get('index',{})]:
+        if not quote.get('history'):continue
+        try:quote.update(close_snapshot(quote['history']))
+        except (RuntimeError,ValueError,TypeError,KeyError):
+            quote.update(price=None,change=None,history=[],stale=True,error='전일 종가 비교 자료가 부족합니다.')
+    expected=data.get('index_code','5044')
+    if not expected or market.get('index', {}).get('code') != expected:
+        data['market']['index'] = dict(name=data.get('sector_name','반도체')+' 지수',code=expected,history=[],change=None,error='해당 섹터 지수를 수집해 주세요.')
     return data
 
 
-def load_view():
-    report = json.loads((ROOT/'data/reports.json').read_text(encoding='utf-8'))
-    path = ROOT/'data/market.json'
-    market = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+def load_view(sector_id=None):
+    from snapdart_data.pipeline import load_report
+    from snapdart_data.catalog import SERVICE,sectors
+    report=load_report(sector_id)
+    path=SERVICE/'market.json' if report.get('index_code')=='5044' else SERVICE/report['sector_id']/'market.json'
+    market=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+    market=dict(market)
     if not market.get('filings'):
-        market['filings'] = []
-        for company in report['companies']:
-            path = DATA/company['code']/'filings.json'
-            if path.exists():
-                rows = json.loads(path.read_text(encoding='utf-8'))
-                market['filings'].extend(dict(code=company['code'], title=f['report_nm'], date=f['rcept_dt'],
-                    id=f['rcept_no'], category=category(f['report_nm']), archived=True) for f in rows)
-        market['filings'].sort(key=lambda f:f['date'], reverse=True)
-    return build_view(report,market)
+        market['filings']=[dict(code=c['code'],title=d['report_name'],date=d['rcept_no'][:8],id=d['rcept_no'],category='정기 공시',archived=True)
+            for c in report['companies'] for d in c['documents']]
+    view=build_view(report,market)
+    view['sectors']=[dict(id=s.id,name=s.name,index_code=s.index_code) for s in sectors()]
+    return view

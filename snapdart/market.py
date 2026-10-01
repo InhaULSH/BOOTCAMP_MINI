@@ -2,13 +2,66 @@
 import json
 import math
 import re
+import os
+import threading
 from datetime import datetime, timedelta
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree as ET
-from .config import ROOT, DATA, COMPANIES
+from .config import ROOT, COMPANIES, SERVICE_ROOT
 from .collect import DartClient, save_json
+from .config import load_env
 
-PATH = ROOT / 'data' / 'market.json'
+PATH = SERVICE_ROOT / 'market.json'
+KRX_CODE = '5044'
+_FDR_LOCK = threading.Lock()
+
+def collect_sector_index():
+    from .krx_api import collect_history
+    import pandas as pd
+    rows=collect_history()
+    frame=pd.DataFrame({'Close':[r['value'] for r in rows]},index=pd.to_datetime([r['date'] for r in rows]))
+    return dict(index_frame(frame),source='KRX OPEN API')
+
+def close_snapshot(history,as_of=None):
+    from .krx_api import korea_today
+    today=as_of or korea_today()
+    # Reject today's intraday/daily row even if the provider ignores the end date.
+    prices={}
+    for row in history:
+        day=datetime.strptime(row['date'][:10].replace('-',''),'%Y%m%d').date()
+        value=number(row['value'])
+        if day<today and value is not None and value>0:prices[day.isoformat()]=value
+    rows=[dict(date=d,value=v) for d,v in sorted(prices.items())]
+    if len(rows)<2:raise RuntimeError('실행일 이전의 두 거래일 종가가 필요합니다.')
+    current,previous=rows[-1],rows[-2]
+    return dict(history=rows,price=current['value'],traded_at=current['date'],previous_traded_at=previous['date'],
+        change=(current['value']/previous['value']-1)*100,point_change=current['value']-previous['value'],price_basis='previous_session_close')
+
+def index_frame(frame):
+    if frame.empty or 'Close' not in frame:
+        raise RuntimeError('KRX 반도체 지수 시세가 없습니다.')
+    history=[dict(date=date.strftime('%Y-%m-%d'),value=close) for date,close in frame['Close'].sort_index().items()]
+    return dict(name='KRX 반도체 지수',code=KRX_CODE,source='KRX OPEN API',stale=False,**close_snapshot(history))
+
+
+def refresh_index_only():
+    result=json.loads(PATH.read_text(encoding='utf-8')) if PATH.exists() else {}
+    previous=result.get('index',{})
+    # Keep five-company metric weights separate from the official index.
+    result['representative_weights']=index_from_quotes(result.get('quotes',{})).get('weights',{})
+    try:
+        result['index']=collect_sector_index()
+        print('KRX 반도체 지수 수집 완료',flush=True)
+    except Exception as error:
+        reason=str(error) if isinstance(error,RuntimeError) else 'KRX API 조회 실패. 기존 자료는 보존됩니다.'
+        if previous.get('code')==KRX_CODE and previous.get('history'):
+            result['index']=dict(previous,stale=True,error=reason+' · 저장된 동일 지수 자료')
+        else:
+            result['index']=dict(name='KRX 반도체 지수',code=KRX_CODE,history=[],change=None,error=reason)
+        print(result['index']['error'],flush=True)
+    result['index_fetched_at']=datetime.now().astimezone().isoformat()
+    save_json(PATH,result)
+    return result['index']
 
 
 def number(value):
@@ -38,19 +91,15 @@ def get(url, xml=False):
 
 
 def collect_quote(code):
-    basic = get(f'https://m.stock.naver.com/api/stock/{code}/basic')
-    info = get(f'https://m.stock.naver.com/api/stock/{code}/integration')
-    cap = next((market_cap(i['value']) for i in info['totalInfos'] if i['code'] == 'marketValue'), None)
-    tree = get(f'https://fchart.stock.naver.com/sise.nhn?symbol={code}&timeframe=day&count=65&requestType=0', xml=True)
-    history = []
-    for item in tree.iter('item'):
-        fields = item.attrib['data'].split('|')
-        value = number(fields[4])
-        if value and value > 0:
-            history.append(dict(date=fields[0], value=value))
-    return dict(code=code, price=number(basic.get('closePrice')), change=number(basic.get('fluctuationsRatio')),
-                traded_at=basic.get('localTradedAt'), market_status=basic.get('marketStatus'),
-                market_cap=cap, history=sorted(history, key=lambda x: x['date']), source='NAVER 증권')
+    import FinanceDataReader as fdr
+    from .krx_api import korea_today
+    today=korea_today();end=today-timedelta(days=1)
+    frame=fdr.DataReader('NAVER:'+code,(end-timedelta(days=120)).isoformat(),end.isoformat())
+    info=get(f'https://m.stock.naver.com/api/stock/{code}/integration')
+    cap=next((market_cap(i['value']) for i in info['totalInfos'] if i['code']=='marketValue'),None)
+    history=[dict(date=d.strftime('%Y-%m-%d'),value=v) for d,v in frame['Close'].sort_index().items()]
+    result=close_snapshot(history,today);result['history']=result['history'][-65:]
+    return dict(code=code,market_cap=cap,source='FinanceDataReader / NAVER',stale=False,**result)
 
 
 def index_from_quotes(quotes):
@@ -78,7 +127,8 @@ def category(title):
 
 
 def collect_recent(client, code):
-    stored = json.loads((DATA/code/'filings.json').read_text(encoding='utf-8'))
+    from snapdart_data.repository import Repository
+    stored=[dict(corp_code=Repository().company(code)['corp_code'])]
     end = datetime.now().date()
     rows = []
     page = 1
@@ -117,11 +167,33 @@ def refresh():
             result['filings'].extend(dict(f, stale=True) for f in old.get('filings', []) if f['code']==code)
             result['errors'].append(company['name']+' 최근 공시 갱신 실패')
     # Never mix old quotes into a newly calculated index.
-    result['index'] = index_from_quotes(result['quotes']) if not any(q.get('stale') for q in result['quotes'].values()) else old.get('index', {})
+    result['representative_weights'] = index_from_quotes(result['quotes']).get('weights', {})
+    result['index'] = old.get('index', {})
     result['filings'].sort(key=lambda f:(f['date'], f['id']), reverse=True)
     save_json(PATH, result)
+    refresh_index_only()
     print('시세·최근 공시 저장 완료. Gemini 호출 없음.', flush=True)
 
 
+def refresh_prices():
+    old=json.loads(PATH.read_text(encoding='utf-8')) if PATH.exists() else {}
+    result=dict(old);result['quotes']=dict(old.get('quotes',{}));result['errors']=[]
+    result['fetched_at']=datetime.now().astimezone().isoformat()
+    for company in COMPANIES:
+        code=company['code']
+        try:
+            result['quotes'][code]=collect_quote(code)
+            print(company['name']+' 전일 종가 수집 완료',flush=True)
+        except Exception:
+            if code in result['quotes']:result['quotes'][code]=dict(result['quotes'][code],stale=True)
+            result['errors'].append(company['name']+' 전일 종가 갱신 실패 · 저장된 자료 유지')
+    result['representative_weights']=index_from_quotes(result['quotes']).get('weights',{})
+    save_json(PATH,result);refresh_index_only()
+
 if __name__ == '__main__':
-    refresh()
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--index-only',action='store_true',help='KRX 반도체 지수만 갱신')
+    parser.add_argument('--prices-only',action='store_true',help='시세만 갱신; DART/Gemini 호출 없음')
+    args=parser.parse_args()
+    refresh_index_only() if args.index_only else refresh_prices() if args.prices_only else refresh()
