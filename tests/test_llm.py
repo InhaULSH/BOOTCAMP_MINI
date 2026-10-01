@@ -29,7 +29,9 @@ class LLMTests(unittest.TestCase):
         from snapdart.llm import citation_schema, model_context, SCHEMA
         evidence=[dict(id='current',year=2025,text='내용',source_ids=['old'])]
         schema=citation_schema(SCHEMA,evidence)
-        self.assertEqual(schema['properties']['cards']['items']['properties']['evidence_ids']['items']['enum'],['current'])
+        # Gemini schema complexity is kept bounded; IDs are validated after generation.
+        self.assertEqual(schema, SCHEMA)
+        self.assertIsNot(schema, SCHEMA)
         self.assertNotIn('enum',SCHEMA['properties']['cards']['items']['properties']['evidence_ids']['items'])
         self.assertNotIn('source_ids',model_context(dict(evidence=evidence))['evidence'][0])
         self.assertEqual(evidence[0]['source_ids'],['old'])
@@ -77,12 +79,12 @@ class LLMTests(unittest.TestCase):
     def test_token_window_waits_and_rejects_oversized_request(self):
         now=[0.0]
         def sleep(seconds): now[0]+=seconds
-        with patch('snapdart.llm.time.monotonic',side_effect=lambda:now[0]), patch('snapdart.llm.time.sleep',side_effect=sleep), patch.dict('os.environ',{'GEMINI_TPM_BUDGET':'225000'}):
+        with patch('snapdart.llm.time.monotonic',side_effect=lambda:now[0]), patch('snapdart.llm.time.sleep',side_effect=sleep), patch.dict('os.environ',{'GEMINI_TPM_BUDGET':'225000','GEMINI_RPM_BUDGET':'10'}):
             limiter=TokenBudget()
             limiter.reserve(110000)
-            self.assertEqual(now[0],61)
+            self.assertEqual(now[0],0)
             limiter.reserve(110000)
-            self.assertEqual(now[0],122)
+            self.assertEqual(now[0],60)
             with self.assertRaisesRegex(RuntimeError,'단일 요청'):
                 limiter.reserve(250000)
 

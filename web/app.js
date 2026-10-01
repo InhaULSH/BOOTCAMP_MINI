@@ -21,58 +21,92 @@ const help = title => `<button class="help" data-help="${esc(title)}" aria-label
 function metric(label,value,note,tip=label){return `<div class="metric"><div class="metric-label">${label}${help(tip)}</div><div class="metric-value">${value}</div><div class="metric-note">${note}</div></div>`;}
 function heading(title,small=''){return `<div class="section-head"><h2>${title}</h2><small>${small}</small></div>`;}
 function cards(items){return `<div class="insights">${items.map(x=>`<article class="insight"><span class="tag">${esc(x.signal)}</span><h3>${esc(x.title)}</h3><span class="label">확인된 내용</span><p class="fact">${esc(x.fact)}</p><span class="label">해석 · 가능성</span><p>${esc(x.interpretation)}</p>${x.financial_impact?`<span class="label">재무·현금흐름 영향 ${help('재무 영향')}</span><p>${esc(x.financial_impact)}</p><span class="label">조건과 불확실성</span><p>${esc(x.uncertainty)}</p>`:''}</article>`).join('') || '<p class="empty">분석에 필요한 재무정보가 부족합니다.</p>'}</div>`;}
-function narrativeIntro(n){return `<section class="panel ai-overview"><div class="eyebrow">GEMINI 3.5 FLASH-LITE ${help('AI 분석')}</div><h2>사업 흐름을 읽는 핵심</h2><p class="lead">${esc(n.summary)}</p><div class="narrative-pair"><div><h3>기회 요인</h3><p>${esc(n.opportunity)}</p></div><div><h3>위험과 불확실성</h3><p>${esc(n.risk)}</p></div></div></section>`;}
-function narrativeDetails(n,company){return heading(company?'표본과 비교해 읽기':'공통 흐름과 기업별 차이')+`<section class="panel"><p class="comparison">${esc(n.comparison)}</p></section>`+heading('5년간 사업은 어떻게 달라졌나',`공시 서술 단계는 AI의 보조 해석 ${help('공시 서술 단계')}`)+`<section class="panel timeline">${n.timeline.map(t=>`<article class="year-row"><strong>${t.year}</strong><div><span class="badge">${esc(t.stage)}</span><p>${esc(t.summary)}</p></div></article>`).join('')}</section>`+heading('앞으로 확인할 변화')+`<section class="panel"><ul class="watch-list">${n.checks.map(t=>`<li>${esc(t)}</li>`).join('')}</ul></section>`;}
+function narrativeIntro(n){return `<section class="panel ai-overview"><div class="eyebrow">공시 기반 분석 ${help('AI 분석')}</div><h2>사업 흐름을 읽는 핵심</h2><p class="lead">${esc(n.summary)}</p><div class="narrative-pair"><div><h3>기회 요인</h3><p>${esc(n.opportunity)}</p></div><div><h3>위험과 불확실성</h3><p>${esc(n.risk)}</p></div></div></section>`;}
+function narrativeDetails(n,company){return heading('5년간 사업은 어떻게 달라졌나',`공시 서술 단계는 AI의 보조 해석 ${help('공시 서술 단계')}`)+`<section class="panel timeline">${n.timeline.map(t=>`<article class="year-row"><strong>${t.year}</strong><div><span class="badge">${esc(t.stage)}</span><p>${esc(t.summary)}</p></div></article>`).join('')}</section>`+heading('앞으로 확인할 변화')+`<section class="panel"><ul class="watch-list">${n.checks.map(t=>`<li>${esc(t)}</li>`).join('')}</ul></section>`;}
 function chart(series,key,benchmark=null,relative=false){
  const values=[...series,...(benchmark||[])].map(x=>x[key]).filter(valid);
  if(!values.length)return '<div class="empty">표시할 수 있는 수치가 없습니다.</div>';
  let lo=Math.min(0,...values),hi=Math.max(0,...values); if(hi===lo)hi=lo+1;
  const span=hi-lo; if(relative){lo=0;hi=100;}else{lo-=span*.12;hi+=span*.12;}
- const x=i=>60+i*115, y=v=>175-(v-lo)/(hi-lo)*145;
+ const x=i=>60+i*460/Math.max(series.length-1,1), y=v=>175-(v-lo)/(hi-lo)*145;
  const lines=Array.from({length:4},(_,i)=>{const v=lo+(hi-lo)*i/3;return `<line class="gridline" x1="60" x2="520" y1="${y(v)}" y2="${y(v)}"/><text x="48" y="${y(v)+4}" text-anchor="end">${key==='fcf'?money(v):v.toFixed(0)+'%'}</text>`}).join('');
  function path(rows,color){let d='',connected=false;rows.forEach((r,i)=>{if(valid(r[key])){d+=`${connected?'L':'M'}${x(i)},${y(r[key])} `;connected=true;}else connected=false;});return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2.5"/>`+rows.map((r,i)=>valid(r[key])?`<circle cx="${x(i)}" cy="${y(r[key])}" r="4" fill="${color}"><title>${r.year}: ${pct(r[key])}</title></circle>`:'').join('');}
  return `<svg class="chart" viewBox="0 0 560 210" role="img" aria-label="연도별 지표 추이">${lines}${benchmark?path(benchmark,'#b2bdcf'):''}${path(series,'#315ddd')}${series.map((r,i)=>`<text x="${x(i)}" y="202" text-anchor="middle">${r.year}</text>`).join('')}</svg>`;
 }
-const options = '<option value="revenue_growth">매출 성장률</option><option value="margin">영업이익률</option><option value="capex_ratio">CAPEX / 매출</option><option value="inventory_growth">재고 증가율</option>';
+let selectedYear=null;
+const signed=v=>valid(v)?`${v>0?'+':''}${v.toFixed(2)}%`:'—';
+const tone=v=>!valid(v)||v===0?'neutral':v>0?'rise':'fall';
+const latest=c=>c.history.at(-1)||{};
+const specs=[['revenue_growth','매출 성장률','성장하고 있나요?'],['margin','영업이익률','팔아서 얼마나 남기나요?'],['capex_ratio','CAPEX / 매출','설비에 얼마나 투자하나요?'],['fcf_margin','투자 후 현금 비중','투자하고 현금이 남나요?']];
+tips['투자 후 현금 비중']='영업활동현금흐름에서 현금 유형자산 취득액을 뺀 단순 FCF를 매출로 나눈 값입니다. 무형자산 투자는 제외합니다. 현금 비중 하락만으로 본업의 현금창출력이 나빠졌다고 단정할 수 없습니다.';
+tips['지수 가중평균']='대표 5사 실증 지수에 쓰인 현재 시가총액 비중으로 기업별 재무 비율을 가중평균합니다. 같은 비중을 과거 연도에도 적용하므로 당시 시장 구성을 재현한 값이 아닙니다. 공식 KRX 비중이 아니며 지표가 누락된 기업이 있으면 평균을 계산하지 않습니다.';
+function spark(rows,label,percent=false){
+ if(!rows?.length)return '<p class="empty">시세를 불러오지 못했습니다.</p>';
+ const vals=rows.map(r=>r.value).filter(valid);if(!vals.length)return '<p class="empty">자료 없음</p>';
+ let lo=Math.min(...vals),hi=Math.max(...vals);let span=hi-lo||1;lo-=span*.1;hi+=span*.1;
+ const x=i=>12+i*416/Math.max(rows.length-1,1),y=v=>120-(v-lo)/(hi-lo)*105;
+ let d='',connected=false;rows.forEach((r,i)=>{if(valid(r.value)){d+=`${connected?'L':'M'}${x(i)},${y(r.value)} `;connected=true;}else connected=false;});
+ return `<svg viewBox="0 0 440 150" class="spark" role="img" aria-label="${esc(label)}"><line x1="12" x2="428" y1="120" y2="120" stroke="#dce7e2"/><path d="${d}" fill="none" stroke="currentColor" stroke-width="2.6"/>${rows.map((r,i)=>valid(r.value)?`<circle cx="${x(i)}" cy="${y(r.value)}" r="2.5" fill="currentColor"><title>${esc(r.date)}: ${r.value.toLocaleString('ko-KR',{maximumFractionDigits:2})}${percent?'%':''}</title></circle>`:'').join('')}<text x="12" y="145">${esc(rows[0].date)}</text><text x="428" y="145" text-anchor="end">${esc(rows.at(-1).date)}</text></svg>`;
+}
+function bindHelp(){document.querySelectorAll('[data-help]').forEach(b=>b.onclick=()=>{$('#help-title').textContent=b.dataset.help;$('#help-body').textContent=tips[b.dataset.help]||'제공된 공시와 계산 수치를 바탕으로 해석합니다.';$('#help').showModal();});}
+function nav(company){
+ document.body.classList.toggle('company-view',Boolean(company));
+ $('#companies').innerHTML=company?data.companies.map(c=>`<a href="#${c.code}" class="${company.code===c.code?'active':''}">${esc(c.name)}</a>`).join(''):'';
+}
+const yearRow=c=>c.history.find(r=>r.year===selectedYear)||{};
+function changeLabel(rows,key){
+ const current=rows.find(r=>r.year===selectedYear), previous=rows.find(r=>r.year===selectedYear-1);
+ if(!current||!previous||!valid(current[key])||!valid(previous[key]))return '전년 비교 자료 없음';
+ if(current.basis!==previous.basis)return '재무 기준 변경 · 비교 제외';
+ const delta=current[key]-previous[key];
+ return `전년 대비 ${delta>0?'+':''}${delta.toFixed(1)}%p`;
+}
+function home(){
+ const idx=data.market.index||{};
+ $('#content').innerHTML=`<div class="eyebrow">DISCOVER INDUSTRIES</div><h1>어떤 산업이 궁금한가요?</h1><p class="subtitle">숫자 너머의 사업 변화. 관심 있는 산업에서 시작하세요.</p><section class="universe" aria-label="산업 노드 히트맵"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><button class="sector-node ${tone(idx.change)}" id="semiconductor"><span class="node-kicker">SEMICONDUCTORS</span><strong>반도체</strong><b>${signed(idx.change)}</b><span>대표 5사 지수 · 직전 거래일 대비</span><small>공시로 읽는 성장·투자·현금흐름</small><em>산업 살펴보기 ↗</em></button><button class="soon bio" disabled>바이오<small>준비 중</small></button><button class="soon car" disabled>자동차<small>준비 중</small></button><button class="soon battery" disabled>2차전지<small>준비 중</small></button><button class="soon finance" disabled>금융<small>준비 중</small></button><div class="map-legend"><span class="rise">● 상승</span><span class="fall">● 하락</span><span>● 자료 없음 / 준비 중</span></div></section><div class="home-bottom"><div><span class="eyebrow">01 / DISCOVER</span><h3>산업을 발견하고</h3><p>대표 기업의 움직임을 함께 살펴봅니다.</p></div><div><span class="eyebrow">02 / UNDERSTAND</span><h3>변화를 이해하고</h3><p>성장·수익·투자·현금의 흐름을 읽습니다.</p></div><div><span class="eyebrow">03 / EXPLORE</span><h3>기업으로 깊이 들어갑니다</h3><p>서로 다른 사업과 공시 내용을 비교합니다.</p></div></div>`;
+ $('#semiconductor').onclick=()=>{const node=$('#semiconductor');node.classList.add('expanding');setTimeout(()=>{location.hash='industry'},matchMedia('(prefers-reduced-motion: reduce)').matches?0:360)};
+}
+function quotePanel(company){
+ const idx=data.market.index||{},q=company?data.market.quotes?.[company.code]:idx;
+ const hist=q?.history||[],v=company?q?.price:hist.at(-1)?.value;
+ const stale=company?(q?.stale|| (q?.traded_at && Date.now()-Date.parse(q.traded_at)>86400000)):Object.values(data.market.quotes||{}).some(x=>x.stale);
+ return `<section class="panel market-panel"><div class="eyebrow">${company?'STOCK SNAPSHOT':'SECTOR PULSE'}</div><h2>${company?esc(company.name)+' 주가':'대표 5사 주가 지수'}</h2><div class="quote-line"><strong>${valid(v)?v.toLocaleString('ko-KR',{maximumFractionDigits:2}):'—'}<small>${company?' 원':' pt'}</small></strong><span class="${tone(q?.change)}">${signed(q?.change)}</span></div><p class="small">${company?'전일 종가 대비 · 수집 시점 시세':'공통 거래일의 일별 가격 · 첫날=100'}</p>${spark(hist,'최근 주가 추이')}<p class="small">${company?`시세 ${esc(q?.traded_at||'미수집')} · ${stale?'저장된 이전 시세':'자동 실시간 갱신 아님'}`:'현재 시가총액 비중을 고정한 실증 지수 · KRX 공식 지수 아님'}</p></section>`;
+}
+function comparisonBars(key,company){
+ const rows=data.companies.map(c=>({code:c.code,name:c.name,value:yearRow(c)[key],history:c.history})).sort((a,b)=>valid(a.value)&&valid(b.value)?a.value-b.value:valid(a.value)?-1:valid(b.value)?1:a.name.localeCompare(b.name,'ko'));
+ const max=Math.max(1,...rows.map(r=>valid(r.value)?Math.abs(r.value):0));
+ return `<div class="bars" aria-label="기업별 ${esc(key)} 낮은 값부터 비교">${rows.map(r=>`<div class="bar-col ${company?.code===r.code?'chosen':''}" data-value="${valid(r.value)?r.value:''}"><div class="bar-space"><span class="bar ${tone(r.value)}" style="height:${valid(r.value)?Math.abs(r.value)/max*62:0}px;${r.value<0?'top:50%':'bottom:50%'}"></span><span class="zero"></span></div><b class="${tone(r.value)}">${pct(r.value)}</b><small>${esc(r.name)}</small><small class="bar-change">${changeLabel(r.history,key)}</small></div>`).join('')}</div>`;
+}
+function keyMetrics(company){
+ const rows=company?company.history:data.weighted_history,row=rows.find(r=>r.year===selectedYear)||{};
+ return `<div class="section-head metric-heading"><h2>대표기업으로 보는 사업의 흐름</h2><label>기준 연도 <select id="metric-year" aria-label="핵심 지표 기준 연도">${data.years.map(y=>`<option value="${y}" ${y===selectedYear?'selected':''}>${y}년</option>`).join('')}</select></label></div>`+specs.map(([key,label,question])=>`<section class="panel metric-comparison"><div class="metric-summary"><span class="eyebrow">${question}</span><h3>${label}${help(label)}</h3><strong>${pct(row[key])}</strong><p class="small">${company?'해당 기업의 연간 비율':`지수 비중 가중평균 ${help('지수 가중평균')}`}</p><p class="year-change">${changeLabel(rows,key)}</p></div><div class="metric-visual">${comparisonBars(key,company)}<p class="small">${key==='capex_ratio'?'낮은 투자 비중 → 높은 투자 비중 · 높고 낮음으로 좋고 나쁨을 판단하지 않습니다.':'낮은 값 → 높은 값 · 해당 지표 기준 비교이며 종합 투자 순위가 아닙니다.'} 변화는 비율 간 차이(%p)입니다.</p></div></section>`).join('');
+}
+function filingSection(company){
+ const n=company?company.llm:data.llm;
+ const recent=n?.timeline?.at(-1);
+ const items=n?.cards||company?.insights||[];
+ return heading('최근 DART 공시 동향','공시 본문에서 확인한 변화와 조건부 해석')+`<section class="panel disclosure-intro">${recent?`<p class="small">분석된 정기보고서 중 최근 연도 · ${recent.year}년</p><p class="lead">${esc(recent.summary)}</p>`:''}${n?.comparison?`<p class="comparison">${esc(n.comparison)}</p>`:''}${!n?'<p>저장된 공시 본문 분석이 부족합니다. 공시 제목이나 건수만으로 사업 변화를 추정하지 않습니다.</p>':''}</section>`+cards(items)+`<p class="small disclosure-scope">${data.years[0]}-${data.years.at(-1)}년 사업·반기·분기보고서 기반의 저장된 분석입니다. 새로 수집한 공시 목록만으로 최신 사업 변화를 생성하지 않습니다.</p>`;
+}
+function matrix(){
+ const cols=data.companies;
+ const fields=[['주요 사업',c=>esc(c.sector)],['매출 성장',c=>pct(yearRow(c).revenue_growth)],['수익성 · 영업이익률',c=>pct(yearRow(c).margin)],['투자 · 매출 대비',c=>pct(yearRow(c).capex_ratio)],['현금 · 매출 대비',c=>pct(yearRow(c).fcf_margin)],['최근 공시',c=>esc((data.market.filings||[]).find(f=>f.code===c.code&&f.category!=='기타 공시')?.title||'자료 없음')]];
+ return heading('대표기업 5사, 나란히 읽기',`${selectedYear}년 · 사업모델 차이를 함께 살펴봅니다`)+`<section class="panel table-wrap matrix"><table><thead><tr><th>비교 항목</th>${cols.map(c=>`<th><a href="#${c.code}">${esc(c.name)} ↗</a></th>`).join('')}</tr></thead><tbody>${fields.map(([label,get])=>`<tr><th>${label}</th>${cols.map(c=>`<td>${get(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>`;
+}
+function quoteCards(){return heading('기업을 더 깊이 살펴보세요','전일 종가 대비 · 저장된 시세')+`<div class="quote-cards">${data.companies.map(c=>{const q=data.market.quotes?.[c.code];return `<a class="panel quote-card" href="#${c.code}"><span>${esc(c.name)} ↗</span><strong class="${tone(q?.change)}">${signed(q?.change)}</strong><small>${valid(q?.price)?q.price.toLocaleString('ko-KR')+'원':'시세 미수집'}</small></a>`}).join('')}</div>`;}
+function companyExtras(company){return heading('표본 내 상대 위치',help('상대 위치'))+`<section class="panel">${specs.slice(0,3).map(([k,label])=>{const v=latest(company).positions?.[k];return `<div class="position"><span>${label}</span><div class="rail">${valid(v)?`<b style="left:${v}%"></b>`:''}</div><em>${pct(v)}</em></div>`}).join('')}</section>`+heading('연도별 재무 요약','단위: 억 원, %')+`<section class="panel table-wrap"><table><thead><tr><th>사업연도</th><th>기준</th><th>매출</th><th>영업이익</th><th>유형자산 취득</th><th>영업현금흐름</th><th>단순 FCF</th></tr></thead><tbody>${company.history.map(r=>`<tr><td>${r.year}</td><td>${r.basis==='CFS'?'연결':r.basis==='OFS'?'별도':'—'}</td><td>${money(r.revenue)}</td><td>${money(r.operating_income)}</td><td>${money(r.capex)}</td><td>${money(r.operating_cashflow)}</td><td>${money(r.fcf)}</td></tr>`).join('')}</tbody></table></section>`;}
 function render(){
- const code=location.hash.replace('#','');const company=data.companies.find(c=>c.code===code);
- const narrative=company?company.llm:data.llm;
- $('#companies').innerHTML=data.companies.map(c=>`<a href="#${c.code}" class="${company?.code===c.code?'active':''}">${esc(c.name)}</a>`).join('');
- $('.nav').classList.toggle('active',!company);
- const row=(company?company.history:data.industry).at(-1);
- let html=`<div class="intro"><div><div class="eyebrow">${company?'COMPANY':'INDUSTRY'} REPORT</div><h1>${company?esc(company.name):'반도체 사업 분석'}</h1><p class="subtitle">${company?esc(company.description):'기업 공시 속 숫자와 문장을 연결해, 사업의 변화를 살펴봅니다.'}</p></div><span class="badge">${company?esc(company.sector):'실증용 5개 기업 표본'}</span></div><div class="tabs"><a href="#industry" class="${!company?'selected':''}">산업 분석</a><a href="#${company?.code||data.companies[0].code}" class="${company?'selected':''}">기업 분석</a></div>`;
- if(narrative) html+=narrativeIntro(narrative);
- html+=`<div class="metrics">${metric('매출 성장률',pct(row.revenue_growth),company?'직전 사업연도 대비':`표본 중앙값 · ${row.revenue_growth_n}/5개 기업`)}${metric('영업이익률',pct(row.margin),company?'매출 대비 영업이익':`표본 중앙값 · ${row.margin_n}/5개 기업`)}${metric('CAPEX / 매출',pct(row.capex_ratio),company?'현금 유형자산 취득 기준':`표본 중앙값 · ${row.capex_ratio_n}/5개 기업`)}${metric('단순 FCF',money(row.fcf)+' <small style="font-size:12px">억 원</small>',company?'영업현금흐름 − 유형자산 취득':`표본 중앙값 · ${row.fcf_n}/5개 기업`)}</div>`;
- html+=`<div class="grid"><section class="panel"><div class="section-head" style="margin-top:0"><h2>5년의 흐름</h2><select id="chart-metric" aria-label="추이 지표 선택">${company?'<option value="position_margin">영업이익률 상대 위치</option><option value="position_revenue_growth">매출 성장률 상대 위치</option>':''}${options}</select></div><div id="chart"></div><div class="legend"><span><i></i>${company?esc(company.name):'표본 중앙값'}</span>${company?'<span><i class="gray"></i>표본 중앙값</span>':''}</div></section><section class="panel"><h2>${company?'표본 내 상대 위치':'함께 나타나는 변화'}${help(company?'상대 위치':'중앙값')}</h2><p class="small">${company?'큰 값일수록 오른쪽 · 투자 매력도 순위 아님':'전년 대비 증가한 기업 / 비교 가능한 기업'}</p>`;
- if(company){html+= [['revenue_growth','매출 성장률'],['margin','영업이익률'],['capex_ratio','CAPEX / 매출'],['inventory_growth','재고 증가율']].map(([k,label])=>`<div class="position"><span>${label}</span><div class="rail">${valid(row.positions[k])?`<b style="left:${row.positions[k]}%"></b>`:''}</div><em>${valid(row.positions[k])?row.positions[k].toFixed(0)+'%':'—'}</em></div>`).join('');html+='<div class="small">낮음 <span style="float:right">높음</span></div>';}else{html+=data.signals.map(s=>`<div class="signal"><div class="signal-row"><span>${s.title} 증가</span><strong>${s.positive} / ${s.count}개</strong></div><div class="track"><span style="width:${s.count?s.positive/s.count*100:0}%"></span></div><p class="small">증가율 중앙값 ${pct(s.median)}</p></div>`).join('');}
- html+='</section></div>';
- if(company){html+=heading('사업 변화 읽기',narrative?'공시와 재무를 연결한 AI 분석':'수치 기반 관찰과 해석')+cards(narrative?.cards || company.insights);
- if(!narrative) html+=heading('공시에서 읽은 사업 동향',`사업 내용의 주제별 문장 추출 ${help('공시 표현')}`)+`<section class="panel">${Object.entries(company.topics).map(([topic,texts])=>`<div class="topic"><strong>${esc(topic)}</strong>${texts.length?texts.slice(0,2).map(t=>`<p>${esc(t)}</p>`).join(''):'<p>선택 조건에 해당하는 문장이 검출되지 않았습니다.</p>'}</div>`).join('')||'<p>추출된 사업 내용이 없습니다.</p>'}</section>`;
- html+=heading('연도별 재무 요약','단위: 억 원, %')+`<section class="panel table-wrap"><table><thead><tr><th>사업연도</th><th>기준</th><th>매출</th><th>영업이익률</th><th>유형자산 취득</th><th>단순 FCF</th></tr></thead><tbody>${company.history.map(r=>`<tr><td>${r.year}</td><td>${r.basis==='CFS'?'연결':r.basis==='OFS'?'별도':'—'}</td><td>${money(r.revenue)}</td><td>${pct(r.margin)}</td><td>${money(r.capex)}</td><td>${money(r.fcf)}</td></tr>`).join('')}</tbody></table></section>`;
- }else{
- const s=data.signals;
- html+=heading('사업 흐름 요약','확인된 내용 → 변화 신호 → 해석')+cards(narrative?.cards || [
- {title:'매출 변화의 폭',signal:s[0].count?`${s[0].positive}/${s[0].count}개 기업 매출 증가`:'자료 부족',fact:`표본의 매출 성장률 중앙값은 ${pct(row.revenue_growth)}입니다.`,interpretation:'기업별 규모와 제품군이 다르므로 공통 수요 회복으로 단정할 수 없습니다. 메모리·위탁생산·장비의 차이를 개별 보고서에서 함께 확인합니다.'},
- {title:'투자와 현금의 균형',signal:s[1].count?`${s[1].positive}/${s[1].count}개 기업 유형자산 취득 증가`:'자료 부족',fact:`CAPEX / 매출 중앙값 ${pct(row.capex_ratio)}, 단순 FCF 중앙값 ${money(row.fcf)}억 원입니다.`,interpretation:'설비 취득 증가가 향후 생산 확대에 기여할 수 있지만, 수요가 뒤따르지 않으면 현금 부담으로 이어질 수 있습니다.'},
- {title:'재고 흐름 점검',signal:s[2].count?`${s[2].positive}/${s[2].count}개 기업 재고 증가`:'자료 부족',fact:`재고자산 증가율 중앙값은 ${pct(row.inventory_growth)}입니다.`,interpretation:'재고는 생산 준비와 판매 둔화 모두의 영향을 받습니다. 매출 흐름과 함께 살펴야 하며 증가 자체를 위험으로 확정하지 않습니다.'}]);
- html+=heading('기업별 한눈에 보기','기업을 선택하면 상세 보고서로 이동합니다')+`<section class="panel table-wrap"><table><thead><tr><th>기업</th><th>매출 성장률</th><th>영업이익률</th><th>CAPEX / 매출</th><th>단순 FCF · 억 원</th></tr></thead><tbody>${data.companies.map(c=>{const r=c.history.at(-1);return `<tr><td><a href="#${c.code}">${esc(c.name)} ↗</a><span class="small">${esc(c.sector)}</span></td><td>${pct(r.revenue_growth)}</td><td>${pct(r.margin)}</td><td>${pct(r.capex_ratio)}</td><td>${money(r.fcf)}</td></tr>`;}).join('')}</tbody></table></section>`;
- if(!narrative) html+=heading('공시 표현의 변화',`관련 문장이 검출된 기업 수 ${help('공시 표현')}`)+`<section class="panel table-wrap"><table><thead><tr><th>주제</th>${data.years.map(y=>`<th>${y}</th>`).join('')}</tr></thead><tbody>${['AI·고부가 제품','수요·시장','생산·투자','위험 요인'].map(t=>`<tr><td>${t}</td>${data.diffusion.map(d=>`<td>${d.topics[t]} / ${d.count}</td>`).join('')}</tr>`).join('')}</tbody></table><p class="small">문장 검출은 수요 발생·투자 실행을 뜻하지 않습니다. 미검출도 해당 사업이나 위험의 부재를 뜻하지 않습니다.</p></section>`;
- }
- if(narrative?.timeline) html+=narrativeDetails(narrative,company);
- html+=`<div class="note">${esc(data.mode)} · 누락 수치는 —로 표시합니다. ${company?'':'지정된 5개 기업을 실증 표본으로 사용합니다. '}${data.companies.reduce((n,c)=>n+c.report_count,0)}개 정기보고서 수집.</div>`;
- $('#content').innerHTML=html;
- const update=()=>{
-  const key=$('#chart-metric').value;
-  const relative=key.startsWith('position_');
-  const metricKey=relative?key.slice(9):key;
-  const series=relative?company.history.map(r=>({year:r.year,[metricKey]:r.positions[metricKey]})):(company?company.history:data.industry);
-  $('#chart').innerHTML=chart(series,metricKey,company&&!relative?data.industry:null,relative);
-  $('#chart').nextElementSibling.innerHTML=relative?'<span><i></i>표본 내 상대 위치 · 백분위</span>':`<span><i></i>${company?esc(company.name):'표본 중앙값'}</span>${company?'<span><i class="gray"></i>표본 중앙값</span>':''}`;
- };
- $('#chart-metric').addEventListener('change',update);update();
- document.querySelectorAll('[data-help]').forEach(button=>button.addEventListener('click',()=>{$('#help-title').textContent=button.dataset.help;$('#help-body').textContent=tips[button.dataset.help];$('#help').showModal();}));
- window.scrollTo(0,0);
+ const route=location.hash.slice(1),company=data.companies.find(c=>c.code===route);selectedYear??=data.years.at(-1);nav(company);
+ if(!route||route==='home'){home();return;}
+ if(route!=='industry'&&!company){$('#content').innerHTML='<h1>찾을 수 없는 보고서입니다.</h1><a href="#home">산업 지도로 돌아가기</a>';return;}
+ const n=company?company.llm:data.llm;
+ let html=`<nav class="breadcrumb"><a href="#home">산업 지도</a> / <a href="#industry">반도체</a>${company?' / '+esc(company.name):''}</nav><div class="intro"><div><div class="eyebrow">${company?'COMPANY REPORT':'INDUSTRY REPORT'}</div><h1>${company?esc(company.name):'반도체, 지금 어떤 흐름일까요?'}</h1><p class="subtitle">${company?esc(company.description):'대표 5개 기업의 공시와 재무로 사업의 변화를 살펴봅니다.'}</p></div></div><div class="overview-grid">${quotePanel(company)}<section class="panel report-summary"><div class="eyebrow">DISCLOSURE REPORT ${help('AI 분석')}</div><h2>${company?'기업':'섹터'} 요약 리포트</h2><p class="lead">${esc(n?.summary||'저장된 AI 요약이 없습니다. 아래 계산 지표와 공시 목록으로 흐름을 확인하세요.')}</p><p class="summary-trend">${esc(company?company.trend_summary:data.trend_summary)}</p></section></div>`;
+ html+=keyMetrics(company)+filingSection(company);
+ if(!company)html+=matrix()+quoteCards();
+ if(n)html+=`<section class="panel narrative-pair"><div><h3>기회 요인</h3><p>${esc(n.opportunity)}</p></div><div><h3>위험과 불확실성</h3><p>${esc(n.risk)}</p></div></section>`+narrativeDetails(n,company);
+ if(company){html+=companyExtras(company);if(!n)html+=`<section class="panel">${Object.entries(company.topics||{}).map(([k,vs])=>`<h3>${esc(k)}</h3>${vs.map(v=>`<p>${esc(v)}</p>`).join('')}`).join('')}</section>`;}
+ html+=`<p class="note">${esc(data.mode)} · 연간 재무와 최근 시세의 기간은 다릅니다. 대표 5사의 전사 재무이며 산업 전체 통계가 아닙니다. 미확인 수치는 —로 표시합니다. 시세·공시 수집: ${esc(data.market.fetched_at||'미수집')}${data.market.errors?.length?'<br>'+data.market.errors.map(esc).join(' · '):''}</p>`;
+ $('#content').innerHTML=html;$('#metric-year').onchange=e=>{selectedYear=Number(e.target.value);const y=window.scrollY;render();window.scrollTo(0,y)};bindHelp();window.scrollTo(0,0);
 }
 $('#close-help').addEventListener('click',()=>$('#help').close());
 window.addEventListener('hashchange',()=>data&&render());
-fetch('/api/reports').then(r=>{if(!r.ok)throw new Error('보고서 파일을 먼저 생성해 주세요.');return r.json();}).then(value=>{data=value;render();}).catch(error=>{$('#content').innerHTML=`<h1>보고서를 준비해 주세요</h1><p>${esc(error.message)}</p><p>프로젝트 폴더에서 python -m snapdart.analyze 실행 후 새로고침하세요.</p>`;});
+fetch('/api/reports').then(r=>{if(!r.ok)throw new Error('보고서 파일을 먼저 생성해 주세요.');return r.json()}).then(value=>{data=value;render()}).catch(error=>{$('#content').innerHTML=`<h1>보고서를 준비해 주세요</h1><p>${esc(error.message)}</p><p>python -m snapdart.analyze 실행 후 새로고침하세요.</p>`});

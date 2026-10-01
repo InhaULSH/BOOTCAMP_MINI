@@ -1,5 +1,6 @@
 """Serve only allowlisted public assets on loopback. Never expose .env/raw data."""
 import argparse
+import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from snapdart.config import ROOT
 
@@ -20,7 +21,11 @@ class Handler(BaseHTTPRequestHandler):
         if not path.exists():
             self.send_error(503, 'Run python -m snapdart.analyze first')
             return
-        data = path.read_bytes()
+        if self.path.split('?')[0] == '/api/reports':
+            from snapdart.dashboard import load_view
+            data = json.dumps(load_view(), ensure_ascii=False).encode('utf-8')
+        else:
+            data = path.read_bytes()
         self.send_response(200)
         self.send_header('Content-Type', route[1])
         self.send_header('Content-Length', str(len(data)))

@@ -116,6 +116,7 @@ def financials(folder):
         row['margin'] = ratio(row['operating_income'], row['revenue'])
         row['capex_ratio'] = ratio(row['capex'], row['revenue'])
         row['fcf'] = row['operating_cashflow'] - row['capex'] if row['operating_cashflow'] is not None and row['capex'] is not None else None
+        row['fcf_margin'] = ratio(row['fcf'], row['revenue'])
         previous = history[-1] if history and history[-1]['basis'] == row['basis'] else {}
         for key in ('revenue', 'capex', 'inventory'):
             row[key + '_growth'] = growth(row[key], previous.get(key))
