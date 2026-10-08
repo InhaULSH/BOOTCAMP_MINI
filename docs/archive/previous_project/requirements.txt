@@ -1,4 +1,0 @@
-finance-datareader>=0.9.202,<1.0
-# 아래는 --llm의 Qdrant 검색용이며 기존 BOOTCAMP 환경에 설치되어 있습니다.
-qdrant-client>=1.14,<2
-sentence-transformers>=5,<6

@@ -1,7 +1,7 @@
 import unittest
 from snapdart.dashboard import weighted, build_view, trend_summary
-from snapdart.market import index_from_quotes, market_cap
-from snapdart.config import COMPANIES
+from snapdart.market import representative_weights, market_cap
+COMPANIES=[dict(code=str(i)) for i in range(5)]
 
 class DashboardTests(unittest.TestCase):
     def test_weighted_not_simple_average(self):
@@ -9,13 +9,13 @@ class DashboardTests(unittest.TestCase):
     def test_missing_not_zero_or_reweighted(self):
         self.assertIsNone(weighted({'a':{'x':10},'b':{'x':None}}, {'a':.8,'b':.2}, 'x'))
         self.assertIsNone(weighted({'a':{'x':10}}, {}, 'x'))
-    def test_index_base_and_dates(self):
+    def test_representative_metric_weights(self):
         quotes={c['code']:dict(market_cap=100,history=[{'date':'1','value':20},{'date':'2','value':22}]) for c in COMPANIES}
-        x=index_from_quotes(quotes)
-        self.assertAlmostEqual(x['history'][0]['value'],100)
-        self.assertAlmostEqual(x['change'],10)
+        weights=representative_weights(quotes,[c['code'] for c in COMPANIES])
+        self.assertAlmostEqual(sum(weights.values()),1)
+        self.assertAlmostEqual(weights[COMPANIES[0]['code']],1/len(COMPANIES))
         quotes.pop(COMPANIES[0]['code'])
-        self.assertEqual(index_from_quotes(quotes)['history'],[])
+        self.assertEqual(representative_weights(quotes,[c['code'] for c in COMPANIES]),{})
     def test_cap_units(self):
         self.assertEqual(market_cap('1,234조 5,678억'),1234e12+5678e8)
         self.assertIsNone(market_cap('N/A'))

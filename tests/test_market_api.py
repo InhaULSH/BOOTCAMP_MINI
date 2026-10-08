@@ -34,6 +34,22 @@ class MarketApiTests(unittest.TestCase):
         for rows in [[dict(IDX_NM='KRX 300')],[dict(IDX_NM='KRX 반도체',BAS_DD='20200414',CLSPRC_IDX='100')]]:
             with patch.object(krx_api,'urlopen',return_value=self.response(rows)),self.assertRaises(RuntimeError):
                 krx_api.fetch_day(date(2026,10,1),'secret')
+    def test_sector_responses_share_daily_cache(self):
+        rows=[dict(IDX_NM=name,BAS_DD='20261001',CLSPRC_IDX=str(value))
+              for name,value in [('KRX 헬스케어',200),('KRX 철강',300)]]
+        with TemporaryDirectory() as temp,patch.object(krx_api,'urlopen',return_value=self.response(rows)) as call:
+            health=krx_api.fetch_day(date(2026,10,1),'secret','KRX 헬스케어',temp)
+            steel=krx_api.fetch_day(date(2026,10,1),'secret','KRX 철강',temp)
+        self.assertEqual(health['value'],200)
+        self.assertEqual(steel['value'],300)
+        self.assertEqual(call.call_count,1)
+    def test_sector_index_frame_keeps_own_identity(self):
+        import pandas as pd
+        from snapdart.market import index_frame
+        frame=pd.DataFrame({'Close':[100,110]},index=pd.to_datetime(['2026-10-01','2026-10-02']))
+        result=index_frame(frame,name='KRX 철강 지수',code='KRX_STEEL')
+        self.assertEqual(result['name'],'KRX 철강 지수')
+        self.assertEqual(result['code'],'KRX_STEEL')
     def test_auth_error_never_leaks_credentials(self):
         with patch.object(krx_api,'urlopen',side_effect=HTTPError('secret',403,'secret',{},None)):
             with self.assertRaises(RuntimeError) as error:krx_api.fetch_day(date(2026,10,1),'secret')

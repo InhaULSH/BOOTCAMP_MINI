@@ -1,15 +1,19 @@
 """Preview grounded SQL/vector context, or explicitly request a short LLM answer."""
 import argparse,json
 from .config import load_env
-from snapdart_data.query import Query,retrieve
-from snapdart_data import prompts
+from snapdart.data_access.query import Query,retrieve
+from snapdart.data_access import prompts
 
 def main():
     load_env();p=argparse.ArgumentParser()
     p.add_argument('--sector');p.add_argument('--company');p.add_argument('--year',type=int)
     p.add_argument('--report-type',default='FY');p.add_argument('--value-type')
     p.add_argument('--question',required=True);p.add_argument('--intent',choices=['financial','filing','hybrid'],default='hybrid')
-    p.add_argument('--llm',action='store_true');args=p.parse_args()
+    p.add_argument('--prompt-version',choices=['new','old'],default='new');p.add_argument('--llm',action='store_true');args=p.parse_args()
+    import os
+    os.environ['LLM_PROMPT_VERSION']=args.prompt_version
+    global prompts
+    prompts=prompts.active()
     result=retrieve(Query(args.question,args.sector,args.company,args.year,args.report_type,value_type=args.value_type,intent=args.intent))
     if args.llm:
         from . import llm

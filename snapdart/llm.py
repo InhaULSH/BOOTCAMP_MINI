@@ -4,25 +4,16 @@ import json
 import os
 import random
 import time
+import threading
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from .config import load_env, SERVICE_ROOT
 DATA = SERVICE_ROOT / 'llm'
 load_env()
-from .collect import save_json
+from .dart_client import save_json
 
-PROVIDER = os.getenv('LLM_PROVIDER', 'gemini').lower()
-
-if PROVIDER == 'ollama':
-    MODEL = os.getenv(
-        'OLLAMA_MODEL',
-        'qwen3.5:9b-q4_K_M'
-    )
-else:
-    MODEL = os.getenv(
-        'GEMINI_MODEL',
-        'gemini-3.5-flash-lite'
-    )
+PROVIDER = 'gemini'
+MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.5-flash-lite')
 
 TEXT = {'type':'string'}
 
@@ -52,6 +43,7 @@ class InputTooLarge(RuntimeError):
 class TokenBudget:
     def __init__(self):
         self.events = []
+        self.lock = threading.Lock()
 
     def reserve(self, tokens):
         tpm_limit = int(
@@ -61,6 +53,8 @@ class TokenBudget:
             os.getenv('GEMINI_RPM_BUDGET', '10')
         )
 
+        if tpm_limit<=0 or rpm_limit<=0:
+            raise InputTooLarge('Gemini TPM·RPM 예산은 양수여야 합니다.')
         reserved = int(tokens * 1.05) + 1024
 
         if reserved > tpm_limit:
@@ -70,32 +64,33 @@ class TokenBudget:
             )
 
         while True:
-            now = time.monotonic()
-
-            self.events = [
-                (t, n)
-                for t, n in self.events
-                if now - t < 60
-            ]
-
-            token_usage = sum(n for _, n in self.events)
-
-            rpm_ok = len(self.events) < rpm_limit
-            tpm_ok = token_usage + reserved <= tpm_limit
-
-            if rpm_ok and tpm_ok:
-                self.events.append((now, reserved))
-                return
-
-            if not self.events:
-                raise InputTooLarge(
-                    '현재 요청이 설정된 Gemini 사용량 예산을 초과합니다.'
+            with self.lock:
+                now = time.monotonic()
+    
+                self.events = [
+                    (t, n)
+                    for t, n in self.events
+                    if now - t < 60
+                ]
+    
+                token_usage = sum(n for _, n in self.events)
+    
+                rpm_ok = len(self.events) < rpm_limit
+                tpm_ok = token_usage + reserved <= tpm_limit
+    
+                if rpm_ok and tpm_ok:
+                    self.events.append((now, reserved))
+                    return
+    
+                if not self.events:
+                    raise InputTooLarge(
+                        '현재 요청이 설정된 Gemini 사용량 예산을 초과합니다.'
+                    )
+    
+                delay = max(
+                    0.1,
+                    self.events[0][0] + 60 - now
                 )
-
-            delay = max(
-                0.1,
-                self.events[0][0] + 60 - now
-            )
 
             print(
                 f'Gemini 사용량 제한 보호 · '
@@ -224,7 +219,10 @@ def model_context(context):
         if isinstance(value, list):
             return [clean(v) for v in value]
         return value
-    return compact_context(clean(context))
+    result=clean(context)
+    for item in result.get('evidence',[]):
+        if item.get('kind')=='filing' and item.get('passages'):item.pop('text',None)
+    return compact_context(result)
 
 def request_report(
     context,
@@ -240,7 +238,7 @@ def request_report(
 
     key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
 
-    if PROVIDER == 'gemini' and not key:
+    if not key:
         raise RuntimeError('.env에 GEMINI_API_KEY가 필요합니다.')
 
     compact = model_context(context)
@@ -283,60 +281,55 @@ def request_report(
     }
 
     if temperature is not None:payload['generationConfig']['temperature']=temperature
-    if PROVIDER == 'ollama':
-        from .local_llm import generate
-        body = generate(payload, MODEL)
-    elif PROVIDER == 'gemini':
-        tokens = count_input_tokens(payload, key)
-        request = Request(f'https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent',
-                          data=json.dumps(payload).encode('utf-8'),
-                          headers={'Content-Type':'application/json','x-goog-api-key':key}, method='POST')
-        for attempt in range(3):
-            TOKEN_BUDGET.reserve(tokens)
-            try:
-                with urlopen(request, timeout=180) as response:
-                    body = json.load(response)
-                break
-            except HTTPError as error:
-                retryable = error.code in (
-                    408, 429, 500, 502, 503, 504
+    from dart_remote.token_counts import cached_count
+    tokens = cached_count(payload, MODEL, lambda: count_input_tokens(payload, key))
+    request = Request(f'https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent',
+                      data=json.dumps(payload).encode('utf-8'),
+                      headers={'Content-Type':'application/json','x-goog-api-key':key}, method='POST')
+    for attempt in range(3):
+        TOKEN_BUDGET.reserve(tokens)
+        try:
+            with urlopen(request, timeout=180) as response:
+                body = json.load(response)
+            break
+        except HTTPError as error:
+            retryable = error.code in (
+                408, 429, 500, 502, 503, 504
+            )
+
+            if retryable and attempt < 2:
+                delay = retry_delay(attempt)
+
+                print(
+                    f'Gemini HTTP {error.code} · '
+                    f'{delay:.1f}초 후 재시도',
+                    flush=True
                 )
 
-                if retryable and attempt < 2:
-                    delay = retry_delay(attempt)
+                time.sleep(delay)
+                continue
 
-                    print(
-                        f'Gemini HTTP {error.code} · '
-                        f'{delay:.1f}초 후 재시도',
-                        flush=True
-                    )
+            raise RuntimeError(
+                gemini_http_message(error, key)
+            ) from None
+        except (URLError, TimeoutError) as error:
+            if attempt < 2:
+                delay = retry_delay(attempt)
 
-                    time.sleep(delay)
-                    continue
+                print(
+                    f'Gemini 네트워크 오류 '
+                    f'({type(error).__name__}) · '
+                    f'{delay:.1f}초 후 재시도',
+                    flush=True,
+                )
 
-                raise RuntimeError(
-                    gemini_http_message(error, key)
-                ) from None
-            except (URLError, TimeoutError) as error:
-                if attempt < 2:
-                    delay = retry_delay(attempt)
+                time.sleep(delay)
+                continue
 
-                    print(
-                        f'Gemini 네트워크 오류 '
-                        f'({type(error).__name__}) · '
-                        f'{delay:.1f}초 후 재시도',
-                        flush=True,
-                    )
-
-                    time.sleep(delay)
-                    continue
-
-                raise RuntimeError(
-                    'Gemini 네트워크 연결 실패. '
-                    '기존 보고서는 보존됩니다.'
-                ) from None
-    else:
-        raise RuntimeError('LLM_PROVIDER는 ollama 또는 gemini여야 합니다.')
+            raise RuntimeError(
+                'Gemini 네트워크 연결 실패. '
+                '기존 보고서는 보존됩니다.'
+            ) from None
 
     text = ''
     finish_reason = None

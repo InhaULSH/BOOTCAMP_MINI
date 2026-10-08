@@ -1,0 +1,10 @@
+# DB 조회 (dart_db_client.py)
+pymysql>=1.1
+pandas>=2.2
+numpy>=2.0
+python-dotenv>=1.0
+
+# 의미 검색 (dart_semantic_search.py) — 프로젝트 검증 환경: sentence-transformers 5.7, transformers 5.18, torch 2.7
+sentence-transformers>=5.0,<6.0
+transformers>=5.0,<6.0
+torch>=2.1

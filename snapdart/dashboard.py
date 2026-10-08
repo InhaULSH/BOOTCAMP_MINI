@@ -2,9 +2,7 @@
 import copy
 import json
 import math
-from . import config  # Register the shared pipeline path before importing it.
-from snapdart_data.pipeline import growth
-from .market import category
+from snapdart.data_access.pipeline import growth
 
 METRICS = [('revenue_growth', '매출 성장률'), ('margin', '영업이익률'),
            ('capex_ratio', '설비투자 비중'), ('fcf_margin', '투자 후 현금 비중')]
@@ -82,11 +80,14 @@ def build_view(report, market=None):
 
 
 def load_view(sector_id=None):
-    from snapdart_data.pipeline import load_report
-    from snapdart_data.catalog import SERVICE,sectors
+    from snapdart.data_access.pipeline import load_report
+    from snapdart.data_access.catalog import SERVICE,sectors
     report=load_report(sector_id)
-    path=SERVICE/'market.json' if report.get('index_code')=='5044' else SERVICE/report['sector_id']/'market.json'
-    market=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+    # Saved reports may predate the sector's market identifier fallback.
+    from .data_access.catalog import sector
+    report=dict(report,index_code=sector(report['sector_id']).index_code)
+    from dart_remote.artifacts import get_artifact
+    market=get_artifact(report['sector_id'],'market') or {}
     market=dict(market)
     if not market.get('filings'):
         market['filings']=[dict(code=c['code'],title=d['report_name'],date=d['rcept_no'][:8],id=d['rcept_no'],category='정기 공시',archived=True)

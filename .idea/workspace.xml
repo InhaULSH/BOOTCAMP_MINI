@@ -1,0 +1,560 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="ALL" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="68170197-59dd-4bd8-a3f0-8de386bb6c92" name="변경" comment="">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/BOOTCAMP_MINI.iml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20230515001677_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20230814002376_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20231114002574_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20240319000684_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20240319000684_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20240319000684_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20240516001638_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20240814001887_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20241114001712_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20250319000665_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20250319000665_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20250319000665_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20250515002103_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20250814003049_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20251114001805_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20260317000635_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20260317000635_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/000660_20260317000635_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20230515002335_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20230814002534_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20231114002109_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20240312000736_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20240312000736_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20240312000736_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20240516001421_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20240814003284_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20241114002642_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20250311001085_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20250311001085_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20250311001085_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20250515001922_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20250814003156_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20251114002447_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20260310002820_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20260310002820_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/005930_20260310002820_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20230515002578_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20230811001399_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20231113000155_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20240328001336_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20240514001364_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20240814003342_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20241114000971_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20250317000470_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20250317000470_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20250317000470_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20250515000989_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20250813001599_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20251112000542_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20260318000323_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20260318000323_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/036930_20260318000323_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20230512000911_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20230814001921_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20231114002269_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20240314001257_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20240314001257_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20240314001257_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20240514001326_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20240814003244_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20241114002196_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20250313001171_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20250313001171_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20250313001171_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20250515000846_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20250814002985_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20251114003005_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20260312001230_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20260312001230_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/042700_20260312001230_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20230515000505_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20230814002136_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20231114001431_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20240320001697_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20240320001697_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20240320001697_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20240516001120_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20240814003941_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20241114002592_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20250325000491_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20250515001610_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20250814002766_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20251114000740_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20260316001453_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20260316001453_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/[RM_20261001_162104]processed/documents/240810_20260316001453_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/market.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data_new/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data_new/SERVICE_README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data_new/sectors.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data_new/신규 파이프라인.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data_new/프롬프트 정의서.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/1.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/2.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/3.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/5.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/BOOTCAMP_MINI_데이터_파이프라인_설계서.docx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/PROMPT_ALIGNMENT.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/PROMPT_ALIGNMENT.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/.idea/.name" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/.idea/BOOTCAMP_MINI.iml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/.idea/inspectionProfiles/profiles_settings.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/.idea/modules.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/.idea/vcs.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/AGENTS.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/document_review/review.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20230515001677_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20230814002376_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20231114002574_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20240319000684_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20240319000684_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20240319000684_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20240516001638_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20240814001887_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20241114001712_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20250319000665_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20250319000665_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20250319000665_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20250515002103_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20250814003049_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20251114001805_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20260317000635_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20260317000635_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/000660_20260317000635_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20230515002335_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20230814002534_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20231114002109_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20240312000736_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20240312000736_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20240312000736_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20240516001421_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20240814003284_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20241114002642_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20250311001085_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20250311001085_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20250311001085_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20250515001922_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20250814003156_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20251114002447_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20260310002820_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20260310002820_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/005930_20260310002820_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20230515002578_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20230811001399_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20231113000155_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20240328001336_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20240514001364_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20240814003342_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20241114000971_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20250317000470_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20250317000470_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20250317000470_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20250515000989_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20250813001599_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20251112000542_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20260318000323_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20260318000323_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/036930_20260318000323_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20230512000911_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20230814001921_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20231114002269_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20240314001257_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20240314001257_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20240314001257_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20240514001326_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20240814003244_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20241114002196_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20250313001171_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20250313001171_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20250313001171_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20250515000846_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20250814002985_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20251114003005_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20260312001230_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20260312001230_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/042700_20260312001230_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20230515000505_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20230814002136_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20231114001431_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20240320001697_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20240320001697_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20240320001697_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20240516001120_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20240814003941_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20241114002592_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20250325000491_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20250515001610_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20250814002766_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20251114000740_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20260316001453_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20260316001453_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/[RM_20261001_162104]processed/documents/240810_20260316001453_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20230515001677_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20230814002376_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20231114002574_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20240319000684_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20240319000684_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20240319000684_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20240516001638_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20240814001887_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20241114001712_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20250319000665_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20250319000665_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20250319000665_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20250515002103_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20250814003049_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20251114001805_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20260317000635_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20260317000635_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/000660_20260317000635_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20230515002335_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20230814002534_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20231114002109_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20240312000736_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20240312000736_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20240312000736_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20240516001421_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20240814003284_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20241114002642_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20250311001085_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20250311001085_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20250311001085_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20250515001922_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20250814003156_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20251114002447_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20260310002820_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20260310002820_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/005930_20260310002820_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20230515002578_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20230811001399_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20231113000155_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20240328001336_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20240514001364_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20240814003342_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20241114000971_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20250317000470_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20250317000470_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20250317000470_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20250515000989_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20250813001599_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20251112000542_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20260318000323_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20260318000323_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/036930_20260318000323_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20230512000911_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20230814001921_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20231114002269_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20240314001257_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20240314001257_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20240314001257_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20240514001326_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20240814003244_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20241114002196_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20250313001171_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20250313001171_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20250313001171_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20250515000846_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20250814002985_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20251114003005_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20260312001230_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20260312001230_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/042700_20260312001230_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20230515000505_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20230814002136_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20231114001431_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20240320001697_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20240320001697_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20240320001697_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20240516001120_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20240814003941_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20241114002592_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20250325000491_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20250515001610_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20250814002766_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20251114000740_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20260316001453_000.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20260316001453_001.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/historical_data_text/processed/source/documents/240810_20260316001453_002.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/output/disclosure_terms/공시_문단명_용어_전수조사_보고서.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/output/industry-map.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/output/industry-update.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/outputs/01a0f523-6602-7173-ad16-02e59de9925a/공시_문단명_용어_전수조사.xlsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/pipeline_README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/prompt_preview.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/requirements-embedding.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/requirements.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/archive/previous_project/ui_iteration/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/서비스 파이프라인 어쩌고.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/임베딩전략.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/1차구상/LLM 프롬프트(프로토타입).txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/1차구상/SnapDART 1차구상.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/1차구상/SnapDART 프로토타입 1.jpeg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/1차구상/SnapDART 프로토타입 2.jpeg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/1차구상/SnapDART 프로토타입 3.jpeg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/1차구상/기업_공시문서_분석_서비스_1차구상.docx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/2차구상/기업_공시문서_분석_서비스_2차구상.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/2차구상/기업_공시문서_분석_서비스_2차구상.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/2차구상/기업_공시문서_분석_서비스_기업매트릭스UI.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/2차구상/기업_공시문서_분석_서비스_임베딩전략.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/2차구상/기업_공시문서_분석_서비스_핵심지표UI.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/SQLD 개념정리.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 10장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 11장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 1장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 2장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 3장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 4장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 5장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 6장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 7장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 8장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 9장 전반부.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 9장 후반부.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/기계학습 &amp; 데이터베이스/기계학습 특강.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제10장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제11장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제12장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제13장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제14장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제1장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제2장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제3장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제4장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제5장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제6장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제7장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제8장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/금융기관경영론 제9장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/재무관리 강노 6장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/재무관리 강노.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/재무관리 박3장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/재무관리 박4장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/재무관리 박5장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/재무관리 박6장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/재무관리 박8장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/재무관리 장2장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 10장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 11장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 12장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 13장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 15장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 16장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 17장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 1장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 25장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 2장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 3장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 4장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 5장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 6장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 7장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/재무/파생상품 9장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 10장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 11장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 12장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 13장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 14장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 15장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 16장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 1장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 2장 BigPicture.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 2장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 3장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 4장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 5장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 6장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 7장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 8장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 9장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/IFRS회계원리 복습2.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 10장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 1장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 2장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 3장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 4장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 5장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 6장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 7장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 8장 추가.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 9장.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 연습문제 1번.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 연습문제 2번.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 연습문제 3번.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 연습문제 4번.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/참고자료/회계/원가관리회계 연습문제 5번.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/industry-map.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/industry-update.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/check_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/check_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/start_ollama.ps1" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/analyze.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/analyze.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/citations.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/collect.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/dashboard.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/dashboard.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/financial_source.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/krx_api.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/krx_api.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/llm.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/llm.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/local_llm.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/market.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/market.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/query.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/query.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart_data/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart_data/catalog.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart_data/pipeline.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart_data/prompts.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart_data/query.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart_data/repository.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart_data/sources.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart_data/xml_source.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_current_llm.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_current_llm.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_dashboard.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_dashboard.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_gemini_errors.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_gemini_errors.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_local_llm.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_preprocess.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_prompt_contract.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_prompt_contract.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_sector_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_sector_repository.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_ui.cjs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_ui.cjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/web/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/style.css" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="PUSH_AUTO_UPDATE" value="true" />
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="UPDATE_TYPE" value="REBASE" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;InhaULSH&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/InhaULSH/BOOTCAMP_MINI.git&quot;,
+    &quot;accountId&quot;: &quot;adea9698-8ef1-4698-85ba-cf1a6bdf02cd&quot;
+  }
+}</component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 6
+}</component>
+  <component name="ProjectId" id="3K4w9sahNVGSwSjkA3v6n4j91HV" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;python.packages.toolwindow.project.migrated.to.right.top.v2&quot;: &quot;true&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-4abd2a77f808-JavaScript-PY-262.10968.92" />
+        <option value="bundled-python-sdk-73a66231627c-5bd6d13a2a75-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-262.10968.92" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="디폴트 작업">
+      <changelist id="68170197-59dd-4bd8-a3f0-8de386bb6c92" name="변경" comment="" />
+      <created>1790830002818</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1790830002818</updated>
+      <workItem from="1790830005356" duration="9501000" />
+      <workItem from="1790844225110" duration="965000" />
+      <workItem from="1790906834084" duration="274000" />
+      <workItem from="1790929600258" duration="271000" />
+      <workItem from="1790931876619" duration="670000" />
+      <workItem from="1791267235717" duration="559000" />
+      <workItem from="1791269756284" duration="5004000" />
+    </task>
+    <task id="LOCAL-00001" summary="최종 구상 사항 반영">
+      <option name="closed" value="true" />
+      <created>1790932132200</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1790932132200</updated>
+    </task>
+    <task id="LOCAL-00002" summary="최종 구상 사항 반영(재커밋)">
+      <option name="closed" value="true" />
+      <created>1790932486327</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1790932486327</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="2차 구상 사항 반영" />
+    <MESSAGE value="최종 구상 사항 반영" />
+    <MESSAGE value="최종 구상 사항 반영(재커밋)" />
+    <option name="LAST_COMMIT_MESSAGE" value="최종 구상 사항 반영(재커밋)" />
+  </component>
+</project>
