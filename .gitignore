@@ -8,3 +8,5 @@ data/krx_api/
 data/xml_origin/
 .dart_cache/
 deploy/
+dart-bigin-auth.pem
+NAVER_CLOUD_SERVER_ENV.txt

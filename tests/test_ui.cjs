@@ -12,5 +12,7 @@ const path=require('node:path');
  assert.equal(marketCap({constituents:[{marketCap:100},{marketCap:null}],constituentMarketCap:500}),null);
  assert.equal(marketCap({constituentMarketCap:500}),500);
  assert.deepEqual(financialPeriods([company]),periods.slice(0,2));
- console.log('Storyboard UI calculations OK: fixed first-quarter baseline, missing gaps, signed ratios, complete market-cap requirements.');
+ assert.deepEqual(metricSeries({financials:[{period:'2022 Q1',revenue:50},{period:'2023 Q1',revenue:100}]},'revenue',['2023 Q1']),[100]);
+ assert.deepEqual(metricSeries({financials:[{period:'2023 Q1',metrics:{operating:7,capex:2}}]},'operating',['2023 Q1']),[7]);
+ console.log('Storyboard UI calculations OK: first-period base-100 index, missing gaps, signed ratios, complete market-cap requirements.');
 })().catch(error=>{console.error(error);process.exit(1)});

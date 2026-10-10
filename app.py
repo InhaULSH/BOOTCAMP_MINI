@@ -5,6 +5,8 @@ import os
 from urllib.parse import urlsplit,parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from snapdart.config import ROOT
+from dart_remote.runtime_cache import request_scope
+from dart_remote.http_assets import public_asset,accepts_gzip
 
 ROUTES = {
     '/': ('web/index.html', 'text/html; charset=utf-8'),
@@ -18,19 +20,51 @@ for name in ('NanumGothic-Regular.ttf','NanumGothic-Bold.ttf'):
     ROUTES['/assets/fonts/'+name]=('web/assets/fonts/'+name,'font/ttf')
 
 class Handler(BaseHTTPRequestHandler):
+    @request_scope
+    def do_POST(self):
+        if urlsplit(self.path).path!='/api/keyword-retry':return self.send_error(404)
+        origin=self.headers.get('Origin')
+        if origin and urlsplit(origin).netloc!=self.headers.get('Host'):return self.send_error(403)
+        if self.headers.get('Content-Type','').split(';')[0]!='application/json':return self.send_error(415)
+        from snapdart.data_access.pipeline import load_report,generate
+        from dart_remote.keyword_actions import retry_keyword
+        from sqlalchemy.exc import SQLAlchemyError
+        try:
+            length=int(self.headers.get('Content-Length','0'))
+            if not 0<length<=4096:raise ValueError('요청 크기 오류')
+            data=json.loads(self.rfile.read(length))
+            if not isinstance(data,dict):raise ValueError('요청 형식 오류')
+            return self.send_json(retry_keyword(data.get('sector'),data.get('code'),data.get('keyword'),load_report,generate))
+        except (ValueError,KeyError,TypeError):return self.send_error(400,'Invalid keyword request')
+        except (RuntimeError,OSError,SQLAlchemyError):return self.send_error(503,'Keyword explanation temporarily unavailable')
     def send_json(self,value):
         data=json.dumps(value,ensure_ascii=False).encode('utf-8')
+        compressed=accepts_gzip(self.headers.get('Accept-Encoding','')) and len(data)>=1024
+        if compressed:
+            import gzip
+            data=gzip.compress(data,compresslevel=3,mtime=0)
         self.send_response(200);self.send_header('Content-Type','application/json; charset=utf-8')
+        self.send_header('Vary','Accept-Encoding')
+        if compressed:self.send_header('Content-Encoding','gzip')
         self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','no-store')
         self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(data)
+    @request_scope
     def do_GET(self):
         path=urlsplit(self.path).path
+        if path=='/api/keyword-filings':
+            from snapdart.data_access.pipeline import load_report
+            from dart_remote.keyword_actions import related_filings
+            from sqlalchemy.exc import SQLAlchemyError
+            query=parse_qs(urlsplit(self.path).query)
+            try:return self.send_json(related_filings(query.get('sector',[None])[0],query.get('code',[None])[0],query.get('keyword',[''])[0],load_report))
+            except (KeyError,ValueError):return self.send_error(400,'Invalid keyword request')
+            except (RuntimeError,OSError,SQLAlchemyError):return self.send_error(503,'Related filings unavailable')
         if path in ('/api/project','/api/quarter-source'):
             from snapdart.ui_project import project,quarter_source
             query=parse_qs(urlsplit(self.path).query)
             try:
                 s=query.get('sector',[None])[0]
-                value=project(s) if path=='/api/project' else quarter_source(s,query.get('code',[''])[0],int(query.get('year',['0'])[0]),int(query.get('quarter',['0'])[0]),query.get('key',['revenue'])[0])
+                value=project(s,query.get('code',[None])[0]) if path=='/api/project' else quarter_source(s,query.get('code',[''])[0],int(query.get('year',['0'])[0]),int(query.get('quarter',['0'])[0]),query.get('key',['revenue'])[0])
                 return self.send_json(value)
             except (KeyError,ValueError):return self.send_error(400,'Invalid UI data query')
             except RuntimeError:return self.send_error(503,'Report or search service unavailable')
@@ -53,27 +87,20 @@ class Handler(BaseHTTPRequestHandler):
             from snapdart.data_access.sources import revenue_source
             try:
                 query=parse_qs(urlsplit(self.path).query)
-                data=json.dumps(revenue_source(query.get('code',[''])[0],int(query.get('year',['0'])[0]),query.get('key',['revenue'])[0],sector_id=query.get('sector',[None])[0]),ensure_ascii=False).encode('utf-8')
+                value=revenue_source(query.get('code',[''])[0],int(query.get('year',['0'])[0]),query.get('key',['revenue'])[0],sector_id=query.get('sector',[None])[0])
             except (KeyError,ValueError,OSError):
                 self.send_error(404,'Revenue source unavailable');return
-            self.send_response(200);self.send_header('Content-Type','application/json; charset=utf-8')
-            self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','no-store')
-            self.end_headers();self.wfile.write(data);return
+            return self.send_json(value)
         if urlsplit(self.path).path == '/api/source':
             from snapdart.data_access.sources import source_excerpt
             try:
                 ref=parse_qs(urlsplit(self.path).query).get('ref',[''])[0]
-                data=json.dumps(source_excerpt(ref,parse_qs(urlsplit(self.path).query).get('sector',[None])[0]),ensure_ascii=False).encode('utf-8')
+                value=source_excerpt(ref,parse_qs(urlsplit(self.path).query).get('sector',[None])[0])
             except KeyError:
                 self.send_error(404,'Unknown citation');return
             except (OSError,ValueError):
                 self.send_error(503,'Source unavailable or anchor mismatch');return
-            self.send_response(200)
-            self.send_header('Content-Type','application/json; charset=utf-8')
-            self.send_header('Content-Length',str(len(data)))
-            self.send_header('Cache-Control','no-store')
-            self.send_header('X-Content-Type-Options','nosniff')
-            self.end_headers();self.wfile.write(data);return
+            return self.send_json(value)
         route = ROUTES.get(self.path.split('?')[0])
         if route is None:
             self.send_error(404)
@@ -84,15 +111,22 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path.split('?')[0] == '/api/reports':
             from snapdart.dashboard import load_view
-            try:data = json.dumps(load_view(parse_qs(urlsplit(self.path).query).get('sector',[None])[0]), ensure_ascii=False).encode('utf-8')
+            try:value = load_view(parse_qs(urlsplit(self.path).query).get('sector',[None])[0])
             except (KeyError,ValueError):return self.send_error(400,'Unknown sector')
             except RuntimeError:return self.send_error(503,'Report or search service unavailable')
+            return self.send_json(value)
         else:
-            data = path.read_bytes()
+            data,etag,compressed=public_asset(path,accepts_gzip(self.headers.get('Accept-Encoding','')))
+            if etag in [x.strip() for x in self.headers.get('If-None-Match','').split(',')]:
+                self.send_response(304);self.send_header('ETag',etag);self.send_header('Cache-Control','no-cache')
+                self.send_header('Vary','Accept-Encoding');self.end_headers();return
         self.send_response(200)
         self.send_header('Content-Type', route[1])
         self.send_header('Content-Length', str(len(data)))
-        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Cache-Control', 'no-cache' if path else 'no-store')
+        if path:
+            self.send_header('ETag',etag);self.send_header('Vary','Accept-Encoding')
+            if compressed:self.send_header('Content-Encoding','gzip')
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
         self.wfile.write(data)
@@ -102,13 +136,22 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=8501)
     parser.add_argument('--sector',help='이 섹터만 서비스에 표시 (예: 반도체)')
     parser.add_argument('--no-market-refresh',action='store_true',help='저장된 시세로 시작; 외부 시세 조회 생략')
+    parser.add_argument('--prompt-version',choices=['new','new2','old'],default=os.getenv('REPORT_PROMPT_VERSION','new'),help='표시할 분석 결과의 프롬프트 버전')
     args = parser.parse_args()
+    os.environ['REPORT_PROMPT_VERSION']=args.prompt_version
     if args.sector:
         os.environ['SNAPDART_SECTORS']=args.sector
         os.environ['SNAPDART_SECTOR']=args.sector
     else:
         os.environ.pop('SNAPDART_SECTORS',None)
         os.environ.pop('SNAPDART_SECTOR',None)
+    if os.getenv('UI_PREWARM','1')=='1':
+        import threading,logging
+        def warm_home():
+            from snapdart.ui_project import project
+            try:project()
+            except Exception:logging.getLogger(__name__).exception('첫 화면 준비 실패 · 요청 시 재시도')
+        threading.Thread(target=warm_home,daemon=True).start()
     if not args.no_market_refresh:
         from snapdart.market import refresh_prices
         import threading

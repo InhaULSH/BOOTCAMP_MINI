@@ -57,22 +57,33 @@ class Repository:
     def _all_facts(self):
         where,params=self._scope()
         params['version']=self.sector.data_version.split(':',1)[0]
-        rows=db.rows('SELECT * FROM standardized_financials WHERE '+where+' AND data_version=:version',params)
+        # Preserve CAPEX review/sign/account metadata discarded by the unified view.
+        rows=db.rows('''SELECT s.*,x.review_required,x.source_account_ids,x.source_account_names,
+            x.sign_normalized,x.normalized_value AS signed_normalized_value,x.capex_method,
+            (SELECT MIN(f.rcept_no) FROM filings f WHERE f.corp_code=s.corp_code AND f.year=s.year
+             AND f.report_type=s.report_type AND f.data_version=s.data_version AND f.is_active=1
+             HAVING COUNT(DISTINCT f.rcept_no)=1) AS active_rcept_no
+            FROM standardized_financials s LEFT JOIN capex_facts x
+              ON s.standard_account='유형자산취득(CAPEX)' AND x.corp_code=s.corp_code
+              AND x.year=s.year AND x.report_type=s.report_type AND x.fs_div=s.fs_div
+              AND x.value_type=s.value_type AND x.data_version=s.data_version AND x.is_active=1
+            WHERE '''+where.replace('corp_code','s.corp_code')+' AND s.data_version=:version',params)
         # The upstream view INNER JOINs standard_accounts by the exact name.
         # "영업이익(손실)" is present in financial_facts but absent from that
-        # catalogue. Recover only missing operating-profit facts, identified by
+        # catalogue. Recover missing operating-profit and operating-cashflow facts, identified by
         # the DART account ID or an exact operating-profit alias; never infer
         # operating profit from gross profit or continuing-operation profit.
         aliases=ACCOUNTS['operating_income']+('영업손실','영업순손익')
-        fallback_params=dict(params,operating_id=IDS['operating_income'][0])
+        fallback_params=dict(params,operating_id=IDS['operating_income'][0],cf_id=IDS['operating_cashflow'][0],cf_old=IDS['operating_cashflow'][1])
         for i,name in enumerate(aliases):fallback_params['a'+str(i)]=name
         alias_sql=','.join(':a'+str(i) for i in range(len(aliases)))
         raw=db.rows('''SELECT f.*,c.corp_name,
             CASE WHEN f.is_calculated=1 THEN f.calculated_value ELSE f.normalized_value END AS value,
-            '영업이익' AS standard_account,'reported' AS value_source
+            CASE WHEN f.sj_div='CF' THEN '영업활동현금흐름' ELSE '영업이익' END AS standard_account,'reported' AS value_source
             FROM financial_facts f JOIN companies c USING(corp_code)
-            WHERE '''+where+''' AND f.data_version=:version AND f.is_active=1 AND f.sj_div IN ('IS','CIS')
-            AND (f.account_id=:operating_id OR f.standard_account_nm IN ('''+alias_sql+'''))
+            WHERE '''+where+''' AND f.data_version=:version AND f.is_active=1
+            AND ((f.sj_div IN ('IS','CIS') AND (f.account_id=:operating_id OR f.standard_account_nm IN ('''+alias_sql+''')))
+              OR (f.sj_div='CF' AND f.account_id IN (:cf_id,:cf_old)))
             AND NOT EXISTS (SELECT 1 FROM standardized_financials v
                 WHERE v.corp_code=f.corp_code AND v.year=f.year AND v.report_type=f.report_type
                 AND v.rcept_no=f.rcept_no AND v.fs_div=f.fs_div AND v.sj_div=f.sj_div
@@ -80,21 +91,28 @@ class Repository:
                 AND v.account_id=f.account_id)''',fallback_params)
         for r in raw:
             r['upstream_standard_account_nm']=r['standard_account_nm']
-            r['financial_lookup']='financial_facts-operating-profit-fallback'
+            r['financial_lookup']='financial_facts-operating-cashflow-fallback' if r['sj_div']=='CF' else 'financial_facts-operating-profit-fallback'
         rows.extend(raw)
         for r in rows:
             value=r['value'];r.update(standard_account_nm=r['standard_account'],normalized_value=value,calculated_value=value,
                 cash_outflow_amount=value if r['standard_account']=='유형자산취득(CAPEX)' else None,
                 is_derived=r['value_source']=='derived')
         return rows
+    @cached_property
+    def _facts_index(self):
+        groups={}
+        for row in self._all_facts:
+            key=tuple(row[k] for k in ('corp_code','year','report_type','fs_div','value_type'))
+            groups.setdefault(key,[]).append(row)
+        return groups
     def facts(self,code,year,report_type='FY',basis='CFS',value_type=None):
         if report_type not in REPORTS or basis not in ('CFS','OFS'):raise ValueError('보고서·재무 기준 오류')
         report_type='H1' if report_type=='HY' else report_type
         value_type=value_type or ('annual' if report_type=='FY' else 'cumulative')
         if value_type not in ('annual','cumulative','quarterly','point_in_time'):raise ValueError('수치 기간 유형 오류')
         corp=self.company(code)['corp_code']
-        return [r for r in self._all_facts if r['corp_code']==corp and r['year']==int(year) and r['report_type']==report_type
-                and r['fs_div']==basis and r['value_type'] in (value_type,'point_in_time')]
+        return [r for kind in dict.fromkeys((value_type,'point_in_time'))
+                for r in self._facts_index.get((corp,int(year),report_type,basis,kind),[])]
     def metric(self,rows,key):
         for section in (('IS','CIS') if key in ('revenue','operating_income') else ('BS',) if key=='inventory' else ('CF',)):
             pool=[r for r in rows if r['sj_div']==section and r['currency']=='KRW']
@@ -221,5 +239,5 @@ class Repository:
     def fingerprint(self):
         config=dict(version=self.sector.data_version,index_version=self.sector.index_version,membership=self.sector.membership_code,
             topics=self.sector.topics,terms=self.sector.terms,profiles=self.sector.profiles,order=self.sector.companies_order,
-            search_backend=__import__('dart_remote.mysql_vectors',fromlist=['backend']).backend(),embedding_revision=__import__('dart_remote.mysql_vectors',fromlist=['REVISION']).REVISION,search_api=os.getenv('FILING_SEARCH_API_URL',''),adapter='central-mysql-bge-v5-xml-financial-fallback')
+            search_backend=__import__('dart_remote.mysql_vectors',fromlist=['backend']).backend(),embedding_revision=__import__('dart_remote.mysql_vectors',fromlist=['REVISION']).REVISION,search_api=os.getenv('FILING_SEARCH_API_URL',''),adapter='central-mysql-bge-v6-company-wordcloud')
         return hashlib.sha256(json.dumps(config,sort_keys=True,ensure_ascii=False).encode()).hexdigest()

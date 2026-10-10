@@ -1,6 +1,6 @@
 """User-authored prompt definition, 2026-10-08. Default new; old remains selectable."""
 import os, sys
-VERSION="bigin-user-2026-10-08-v1"
+VERSION="bigin-user-2026-10-10-v4-single-keyword"
 COMMON = '''[역할과 목적]
 당신은 DART BIG:IN의 산업·기업 분석 AI입니다.
 DART BIG:IN은 초보 투자자가 산업의 큰 흐름을 이해하고, 그 산업을 구성하는 기업의 사업 현황을 살펴보도록 돕는 서비스입니다.
@@ -63,7 +63,7 @@ INSIGHT = '''[기능: AI 산업 인사이트]
 5. 공통 요인을 확인할 수 없다면 억지로 하나의 흐름으로 묶지 말고, 중요한 사업군 또는 기업의 상황으로 범위를 좁히세요.
 
 [출력]
-- 1-3문장으로 작성하세요.
+- 적격 근거로 뒷받침되는 내용만 1-3문장으로 작성하세요. 1문장으로 충분하면 추가하지 마세요. 같은 내용을 반복하여 문장 수를 채우지 마세요.
 - 첫 문장에서 핵심 사업 신호를 전달하세요.
 - 이후 문장에서는 확인되는 배경 상황 또는 중요한 기업별 차이 또는 위험을 개략적으로 서술하세요.
 - 기회·위험·과거 변화·향후 계획을 모두 포함하려 하지 마세요. 현재 핵심 흐름에 필요한 내용만 선택하세요.
@@ -82,7 +82,7 @@ COMPANY = '''[기능: AI 기업 인사이트]
 - 경쟁사와의 비교는 비교 가능한 입력 자료가 있으면서 해당 기업 이해에 불가피한 경우에만 사용하세요.
 
 [출력]
-- 1-3문장의 짧은 한 문단으로 핵심 현황이나 변화를 먼저 설명하세요.
+- 적격 근거가 있는 1-3문장의 짧은 한 문단으로 핵심 현황이나 변화를 먼저 설명하세요. 1문장으로 충분하면 추가하지 마세요.
 - 필요한 배경과 중요한 불확실성만 덧붙이세요.
 - 수치·제품·사업부를 나열하는 대신 이 기업의 사업이 어떤 방향으로 움직이는지 개략적으로 전달하세요.
 - 전후 변화가 확인되지 않으면 현재 사업 현황을 설명하세요'''
@@ -109,23 +109,28 @@ KEYWORD = '''[기능: 공시 키워드 인사이트]
 
 [출력]
 - 용어 해설과 공시에서 확인한 내용을 합쳐 1-2문장으로 작성하세요.
-- 가능하면 첫 문장은 용어의 뜻을, 두 번째 문장은 확인된 사업 현황이나 동향을 설명하세요. 짧게 통합해도 됩니다.
+- 한 문장이면 용어의 뜻과 확인된 사업 현황이나 동향을 자연스럽게 함께 설명하세요. 두 문장이 이해하기 쉬우면 첫 문장은 용어의 뜻, 두 번째 문장은 확인된 사업 현황이나 동향을 설명하세요. 같은 내용을 반복하여 문장 수를 채우지 마세요.
 - “다양한 동향이 나타난다”, “기업마다 다른 기준을 적용한다”는 설명만으로 끝내지 마세요.
 - 사전적 정의만 반복하거나 관련 없는 공시 사실을 덧붙이지 마세요.
 - 용어 설명만 가능하고 사업 동향의 근거가 없다면 이를 새로운 동향처럼 제시하지 마세요.
-- 적격 공시 근거가 없는 문장은 생략하고, 설명을 만들 수 없으면 근거 부족으로 처리하세요.'''
+- 각 문장을 적격 공시 근거로 뒷받침하세요. 한 문장으로 충분하면 추가하지 마세요. 용어와 관련 사업 현황을 설명할 적격 근거가 없으면 sentences=[]와 insufficient_reason을 반환하세요.'''
 
 def active():
-    version=os.getenv('LLM_PROMPT_VERSION','new')
+    from dart_remote.prompt_context import active_version
+    version=active_version() or os.getenv('LLM_PROMPT_VERSION','new')
     if version=='old':
         from . import prompts_old
         return prompts_old
-    if version!='new':raise ValueError('LLM_PROMPT_VERSION은 new 또는 old여야 합니다.')
+    if version=='new2':
+        from . import prompts_new2
+        return prompts_new2
+    if version!='new':raise ValueError('LLM_PROMPT_VERSION은 new, new2 또는 old여야 합니다.')
     return sys.modules[__name__]
 
 def selection_profile():
     active()
-    if os.getenv('LLM_PROMPT_VERSION','new')=='old':
+    from dart_remote.prompt_context import active_version
+    if (active_version() or os.getenv('LLM_PROMPT_VERSION','new'))=='old':
         from dart_remote import citation_selection_old
         return citation_selection_old
     from dart_remote import citation_selection
@@ -136,8 +141,8 @@ def instruction(function='insight'):
 
 def context(sector_name,financial_data,retrieved_chunks,company=None,keyword=None,keyword_statistics=None):
     scope='기업 '+company if company else '산업 '+sector_name
-    task=(f'{scope}의 {keyword}에 대한 용어 해설과 공시에서 확인한 사업 현황·동향을 1-2문장으로 설명하세요.' if keyword
-          else f'{scope}의 핵심 사업 현황·변화를 1-3문장으로 설명하세요.')
+    task=(f'{scope}의 {keyword}에 대한 용어 해설과 공시에서 확인한 사업 현황·동향을 근거가 있는 1-2문장으로 설명하세요. 사전적 정의만으로 채우지 말고 적격 근거가 없으면 빈 sentences와 insufficient_reason을 반환하세요.' if keyword
+          else f'{scope}의 핵심 사업 현황·변화를 적격 근거가 있는 1-3문장으로 설명하세요. 근거가 없으면 빈 sentences와 insufficient_reason을 반환하세요.')
     return dict(sector_name=sector_name,company=company,keyword=keyword,financial_data=financial_data,
         retrieved_chunks=retrieved_chunks,task=task,
         **(dict(keyword_statistics=keyword_statistics) if keyword and keyword_statistics else {}))

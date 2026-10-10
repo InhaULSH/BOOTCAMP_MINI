@@ -1,4 +1,4 @@
-import {loadProject, number, marketCap, stockChange, direction, metricCatalog, metricSeries, financialPeriods} from './data.js';
+import {loadProject, number, marketCap, stockChange, direction, metricCatalog as defaultMetricCatalog, metricSeries, financialPeriods} from './data.js';
 import {empty, lineChart, wordCloud} from './charts.js';
 import {explain as openExplanation, insightMarkup, bindCitations, showQuarterSource} from './sources.js';
 
@@ -11,15 +11,64 @@ const industryUrl=id=>'industry.html?sector='+encodeURIComponent(id);
 const palette=['#d85257','#367aba','#c89b36','#398d78','#9273ac'];
 function safeSource(source){try{const url=new URL(source);return ['https:','http:'].includes(url.protocol)?url.href:null;}catch{return null;}}
 function explain(title,body){dialog.classList.remove('source-dialog');openExplanation(title,body);}
-let activeSubject;
+let activeSubject,keywordDialogVersion=0;
 function keywordExplanation(keyword){
+  const version=++keywordDialogVersion;
   const sector=activeSubject.sectorId||activeSubject.id;
+  const code=activeSubject.sectorId?activeSubject.code||activeSubject.id.split(':').at(-1):null;
   const summary=keyword.insight;
-  const content=(summary?.sentences?.length||summary?.insufficient_reason)?insightMarkup(summary,sector):
-    keyword.disclosureContext?insightMarkup({sentences:[{text:keyword.disclosureContext,source_refs:keyword.source_refs||[]}]},sector):
-    '짧은 용어 해설과 공시 요약이 아직 생성되지 않았습니다. 관련 공시와 재무 자료를 바탕으로 분석을 재생성하면 표시됩니다.';
-  explain(keyword.label,`<strong class="popup-label">용어 해설 · 공시에서 확인한 내용</strong><p id="keyword-context" class="popup-body">${content}</p><p class="popup-note">공시 내용을 간접 인용한 요약입니다. 각주를 누르면 참고한 원문을 확인할 수 있습니다.</p>`);
+  const fallbackMessages={
+    insufficient_evidence:'최근 공시에서 의미 있게 포착된 키워드이지만, 특정 사업 변화와 직접 연결해 설명할 만큼 충분한 근거 문장은 확인되지 않았습니다.',
+    rate_limit:'현재 설명 요청이 많아 잠시 제공이 지연되고 있습니다.',
+    unavailable:'현재 공시 설명을 불러오는 데 시간이 걸리고 있습니다.',
+    verification:'최근 공시에서 의미 있게 포착된 키워드이지만, 설명과 근거의 일치 여부를 충분히 확인하지 못했습니다.',
+    not_generated:'이 키워드의 상세 설명은 아직 준비되지 않았습니다.',
+    configuration:'현재 상세 설명을 제공하기 어렵습니다. 관련 공시에서 키워드의 내용을 직접 확인하실 수 있습니다.'
+  };
+  const hasSummary=Boolean(summary?.sentences?.length);
+  const reason=summary?.fallback_reason||(summary?'insufficient_evidence':'not_generated');
+  const content=hasSummary?insightMarkup(summary,sector):escape(fallbackMessages[reason]||fallbackMessages.insufficient_evidence);
+  const retryable=!hasSummary&&summary?.retryable===true&&['unavailable','rate_limit'].includes(reason);
+  const note=hasSummary?'공시 내용을 간접 인용한 요약입니다. 각주를 누르면 참고한 원문을 확인할 수 있습니다.':'키워드 선정과 사업 변화에 대한 설명은 별도로 검증합니다.';
+  explain(keyword.label,`<strong class="popup-label">용어 해설 · 공시에서 확인한 내용</strong><p id="keyword-context" class="popup-body">${content}</p><p class="popup-note">${note}</p>${hasSummary?'':`<div class="keyword-actions"><p>대신 이 키워드와 관련된 공시를 직접 살펴보시겠어요?</p><button type="button" id="keyword-filings">관련 공시 직접 보기</button>${retryable?'<button type="button" id="keyword-retry">다시 시도</button>':''}<p id="keyword-action-status" role="status" aria-live="polite"></p><div id="keyword-filing-list"></div></div>`}`);
   bindCitations();
+  const current=()=>dialog.open&&version===keywordDialogVersion;
+  const request={sector,code,keyword:keyword.keyword||keyword.label};
+  const status=document.getElementById('keyword-action-status');
+  const filingsButton=document.getElementById('keyword-filings');
+  if(filingsButton)filingsButton.onclick=async()=>{
+    filingsButton.disabled=true;status.textContent='기업별 관련 공시를 확인하고 있습니다.';
+    try{
+      const query=new URLSearchParams({sector,keyword:request.keyword});if(code)query.set('code',code);
+      const response=await fetch('/api/keyword-filings?'+query);if(!response.ok)throw new Error();
+      const data=await response.json();if(!current())return;
+      document.getElementById('keyword-filing-list').innerHTML=(data.documents||[]).map(d=>{
+        const url=safeSource(d.document_url);return url?`<a class="keyword-filing" href="${escape(url)}" target="_blank" rel="noopener noreferrer"><strong>${escape(d.company)}</strong><span>${escape(d.year)}년 ${escape(d.report_name)} · DART 원문 보기 ↗</span></a>`:'';
+      }).join('');
+      status.textContent=data.documents?.length?'기업마다 키워드 언급이 가장 많은 공시 하나를 표시했습니다.': '현재 분석 기간에서 해당 키워드가 언급된 공시를 확인하지 못했습니다.';
+    }catch{
+      if(current())status.textContent='관련 공시 목록을 잠시 불러오지 못했습니다. 잠시 후 버튼을 다시 눌러 주세요.';
+    }finally{if(current())filingsButton.disabled=false;}
+  };
+  const retryButton=document.getElementById('keyword-retry');
+  if(retryButton)retryButton.onclick=async()=>{
+    retryButton.disabled=true;status.textContent='관련 근거를 다시 확인해 설명을 준비하고 있습니다.';
+    try{
+      const response=await fetch('/api/keyword-retry',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)});
+      if(!response.ok)throw new Error();const data=await response.json();if(!current())return;
+      if(data.retry_after){
+        const wait=Math.max(1,Math.min(60,data.retry_after));status.textContent=`설명 요청이 진행 중이거나 잠시 대기가 필요합니다. ${wait}초 후 다시 시도해 주세요.`;
+        setTimeout(()=>{if(current())retryButton.disabled=false;},wait*1000);return;
+      }
+      if(data.insight){keyword.insight=data.insight;keywordExplanation(keyword);}
+      else{status.textContent='현재는 설명을 다시 요청할 수 없습니다. 관련 공시를 직접 확인해 주세요.';retryButton.hidden=true;}
+    }catch{
+      if(current()){
+        status.textContent='설명을 잠시 불러오지 못했습니다. 관련 공시를 직접 확인하거나 잠시 후 다시 시도해 주세요.';
+        setTimeout(()=>{if(current())retryButton.disabled=false;},60000);
+      }
+    }
+  };
 }
 
 document.getElementById('explain-close').addEventListener('click',()=>dialog.close());
@@ -56,16 +105,18 @@ function renderHome(project){
       const compact=diameter<100;node.classList.toggle('is-compact',compact);node.querySelector('.sector-return').style.display=compact?'none':'';node.setAttribute('aria-label',s.name+' '+percent(s.indexReturnPct));
     });
   };
-  new ResizeObserver(layout).observe(field);layout();
+  let layoutFrame=null;
+  new ResizeObserver(()=>{if(layoutFrame!==null)return;layoutFrame=requestAnimationFrame(()=>{layoutFrame=null;layout();});}).observe(field);layout();
 }
 
-function metricCards(companies,periods){return Object.entries(metricCatalog).map(([key,m])=>`<article class="panel metric"><p class="metric-question">${escape(m.question)}</p><div class="panel-top"><div class="company-metric-heading"><h3>${escape(m.title)}</h3><button class="metric-help" data-help="${key}" aria-label="${escape(m.title)} 설명">?</button></div><div class="metric-summary"><small>${companies.length===1?'최근 분기':'최근 분기 중앙값'}</small><strong data-summary="${key}"></strong></div></div><p class="definition">${escape(m.formula)} · ${escape(m.unit)}</p><div class="chart" data-metric="${key}"></div><div class="legend"></div><div data-metric-insight="${key}"></div></article>`).join('');}
+function metricCards(companies,periods,metricCatalog){return Object.entries(metricCatalog).map(([key,m])=>`<article class="panel metric"><p class="metric-question">${escape(m.question)}</p><div class="panel-top"><div class="company-metric-heading"><h3>${escape(m.title)}</h3><button class="metric-help" data-help="${key}" aria-label="${escape(m.title)} 설명">?</button></div><div class="metric-summary"><small>${companies.length===1?'최근 분기':'최근 분기 중앙값'}</small><strong data-summary="${key}"></strong></div></div><p class="definition">${escape(m.formula)} · ${escape(m.unit)}</p><div class="chart" data-metric="${key}"></div><div class="legend"></div><div data-metric-insight="${key}"></div></article>`).join('');}
 function renderAnalysis(project,subject,selectedCompanies,isCompany){
+  const metricCatalog=subject.metricCatalog||selectedCompanies[0]?.metricCatalog||defaultMetricCatalog;
   const periods=subject.periods||financialPeriods(selectedCompanies);
   activeSubject=subject; const header=subject.name;
   const parent=project.sectors.find(s=>(s.analysisCompanyIds||[]).includes(subject.id));
   document.title=header+' | DART BIG:IN';
-  app.innerHTML=`<a class="back" href="${isCompany&&parent?industryUrl(parent.id):'index.html'}">‹ ${isCompany&&parent?escape(parent.name)+' 산업분석':'한국 주요 시장'}</a><div class="title-row"><div><p class="eyebrow">${isCompany?'기업 상세분석':'산업분석'}</p><h1>${escape(header)}</h1><p class="company-subtitle">${escape(subject.businessSummary||'')}</p></div></div><section class="top-grid company-top"><article class="panel"><div class="panel-top"><h2>${escape(isCompany?subject.name:(subject.indexName||'섹터지수'))}</h2><span class="meta">${escape(subject.marketSeriesPeriod||'')}</span></div><div class="stock-heading"><strong id="market-value"></strong><span id="market-change"></span></div><div class="chart" id="market-chart"></div></article><article class="panel"><div class="panel-top"><h2>${isCompany?'기업 공시 클라우드':'공시 신호 워드클라우드'}</h2></div><p class="definition">키워드를 선택하여 용어 해설과 공시 내용을 살펴보세요.</p><div class="cloud" id="cloud"></div></article></section><section class="ai"><div class="ai-head"><div class="ai-title"><span class="ai-icon" aria-hidden="true">AI</span><h2>AI ${isCompany?'기업':'산업'} 인사이트</h2></div></div><p id="insight"></p></section>${isCompany?'<section class="detail-kpis" id="kpis"></section>':'<section><div class="section-head"><h2>분석 대상 기업</h2></div><div class="company-cards" id="company-cards"></div></section>'}<section><div class="section-head"><h2>주요 재무 지표 흐름</h2><span class="meta">${periods.length?escape(periods[0]+' - '+periods.at(-1)):''}</span></div><p class="metric-basis">매출 기준: ${periods.length?escape(periods[0])+' = 100':'기준 분기 데이터 미연결'}</p><div class="metrics-grid">${metricCards(selectedCompanies,periods)}</div></section>${isCompany?'':'<section class="panel comparison"><div class="panel-top"><h2>기업 한눈에 비교</h2></div><div class="table-wrap" tabindex="0" role="region" aria-label="기업 비교표"><table><thead><tr><th>기업</th>'+Object.values(metricCatalog).map(m=>'<th>'+escape(m.title)+'</th>').join('')+'<th>주가 · 전일 대비</th></tr></thead><tbody id="comparison"></tbody></table></div></section>'}`;
+  app.innerHTML=`<a class="back" href="${isCompany&&parent?industryUrl(parent.id):'index.html'}">‹ ${isCompany&&parent?escape(parent.name)+' 산업분석':'한국 주요 시장'}</a><div class="title-row"><div><p class="eyebrow">${isCompany?'기업 상세분석':'산업분석'}</p><h1>${escape(header)}</h1><p class="company-subtitle">${escape(subject.businessSummary||'')}</p></div></div><section class="top-grid company-top"><article class="panel"><div class="panel-top"><h2>${escape(isCompany?subject.name:(subject.indexName||'섹터지수'))}</h2><span class="meta">${escape(subject.marketSeriesPeriod||'')}</span></div><div class="stock-heading"><strong id="market-value"></strong><span id="market-change"></span></div><div class="chart" id="market-chart"></div></article><article class="panel"><div class="panel-top"><h2>${isCompany?'기업 공시 클라우드':'공시 신호 워드클라우드'}</h2></div><p class="definition">키워드를 선택하여 용어 해설과 공시 내용을 살펴보세요.</p><div class="cloud" id="cloud"></div></article></section><section class="ai"><div class="ai-head"><div class="ai-title"><span class="ai-icon" aria-hidden="true">AI</span><h2>AI ${isCompany?'기업':'산업'} 인사이트</h2></div></div><p id="insight"></p></section>${isCompany?'<section class="detail-kpis" id="kpis"></section>':'<section><div class="section-head"><h2>분석 대상 기업</h2></div><div class="company-cards" id="company-cards"></div></section>'}<section><div class="section-head"><h2>주요 재무 지표 흐름</h2><span class="meta">${periods.length?escape(periods[0]+' - '+periods.at(-1)):''}</span></div><p class="metric-basis">성장률은 전년 동분기 대비 · 비율은 해당 분기 기준 · 은행 수익·비용은 연환산 · 자료가 없는 구간은 표시하지 않습니다.</p><div class="metrics-grid">${metricCards(selectedCompanies,periods,metricCatalog)}</div></section>${isCompany?'':'<section class="panel comparison"><div class="panel-top"><h2>기업 한눈에 비교</h2></div><div class="table-wrap" tabindex="0" role="region" aria-label="기업 비교표"><table><thead><tr><th>기업</th>'+Object.values(metricCatalog).map(m=>'<th>'+escape(m.title)+'</th>').join('')+'<th>주가 · 전일 대비</th></tr></thead><tbody id="comparison"></tbody></table></div></section>'}`;
   const coverage=(isCompany?parent:subject)?.coverage;
   if(coverage&&(coverage.unbuilt_companies?.length||coverage.missing_chunk_companies?.length||coverage.incomplete_reports?.length)){
     const names=[...new Set([...(coverage.unbuilt_companies||[]),...(coverage.missing_chunk_companies||[])])];
@@ -93,19 +144,26 @@ function renderAnalysis(project,subject,selectedCompanies,isCompany){
   const marketValue=document.getElementById('market-value');marketValue.textContent=format(marketPoints.at(-1)?.value,isCompany?'원':'pt');
   const change=document.getElementById('market-change');change.textContent=stockChange(isCompany?subject.dailyReturnPct:subject.indexReturnPct);change.className=direction(isCompany?subject.dailyReturnPct:subject.indexReturnPct);
   const selectedSeries=Object.fromEntries(Object.keys(metricCatalog).map(key=>[key,series[key][0]?.id]));
+  const pending=selectedCompanies.flatMap(c=>(c.financials||[]).filter(r=>r.capexValidation?.status==='unverified').map(r=>`${c.name} ${r.period}`));
+  if(pending.length)document.querySelector('[data-metric="fcf"]')?.parentElement.insertAdjacentHTML('beforeend',`<details class="insight-basis"><summary>CAPEX 비교 기준 확인 중 · ${pending.length}개 기업·분기</summary><p>${pending.map(escape).join(' · ')}. 해당 기간 CAPEX와 FCF Margin은 검증 전까지 표시하지 않습니다.</p></details>`);
+  let cloudSize='';
   const render=()=>{
     lineChart(document.getElementById('market-chart'),[{id:subject.id,name:subject.name,color:'#c96d75',values:marketPoints.map(p=>p.value)}],marketPoints.map(p=>p.date),{unit:isCompany?'원':'pt',label:subject.name+(isCompany?' 주가':' 지수')});
     const cloud=document.getElementById('cloud');
     cloud.style.height=document.getElementById('market-chart').clientHeight+'px';
-    wordCloud(cloud,subject.keywords,keywordExplanation);
+    const size=cloud.clientWidth+':'+cloud.clientHeight;
+    if(size!==cloudSize){wordCloud(cloud,subject.keywords,keywordExplanation);cloudSize=size;}
     Object.entries(metricCatalog).forEach(([key,m])=>{
       const container=document.querySelector(`[data-metric="${key}"]`);
-      lineChart(container,series[key],periods,{quarterly:true,baseline:key==='revenue',unit:m.unit,label:m.title,describe:(s,i,v)=>{
+      lineChart(container,series[key],periods,{quarterly:true,baseline:false,unit:m.unit,label:m.title,describe:(s,i,v)=>{
         const row=(s.company.financials||[]).find(r=>r.period===periods[i]);
         let text=`${s.name}\n${periods[i]}\n${m.title}: ${format(v,m.unit==='%'?'%':'')}`;
+        if(key==='revenue')text+='\n기준: '+(row?.indexBasePeriod||periods[0])+' = 100';
+        if(Object.keys(row?.derivedFields||{}).length)text+='\n역산된 값 포함: '+Object.entries(row.derivedFields).map(([field,method])=>field+' ('+method+')').join(', ');
+        if(s.company.metricProfile==='bank')return text+'\n재무 기준: '+(row?.basis||'자료 없음');
         if(key==='revenue')text+='\n실제 매출액: '+format(row?.revenue, ' '+(s.company.amountUnit||'억원'));
         if(key==='operating')text+='\n실제 영업이익: '+format(row?.operatingProfit,' '+(s.company.amountUnit||'원'));
-        if(key==='capex')text+='\nCAPEX: '+format(row?.capex,' '+(s.company.amountUnit||'억원'));
+        if(key==='capex')text+='\n'+(s.company.metricProfile==='health'?'R&D: ':'CAPEX: ')+format(s.company.metricProfile==='health'?row?.rd:row?.capex,' '+(s.company.amountUnit||'억원'));
         if(key==='fcf')text+='\nFCF: '+format(number(row?.operatingCashFlow)&&number(row?.capex)?row.operatingCashFlow-row.capex:null,' '+(s.company.amountUnit||'억원'));
         return text;
       },onSelect:(s,i)=>showQuarterSource(s.company,periods[i],key)});
@@ -129,7 +187,10 @@ function renderAnalysis(project,subject,selectedCompanies,isCompany){
       selectCompany(selectedSeries[key]);
     });
   };
-  let observedWidth=0;new ResizeObserver(entries=>{if(entries[0].contentRect.width!==observedWidth){observedWidth=entries[0].contentRect.width;requestAnimationFrame(render);}}).observe(app);document.fonts.ready.then(render);
+  let observedWidth=0,renderFrame=null;
+  const scheduleRender=()=>{if(renderFrame!==null)return;renderFrame=requestAnimationFrame(()=>{renderFrame=null;render();});};
+  new ResizeObserver(entries=>{if(entries[0].contentRect.width!==observedWidth){observedWidth=entries[0].contentRect.width;scheduleRender();}}).observe(app);
+  document.fonts.ready.then(()=>{cloudSize='';scheduleRender();});
 }
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape')document.getElementById('chart-tip').hidden=true;});

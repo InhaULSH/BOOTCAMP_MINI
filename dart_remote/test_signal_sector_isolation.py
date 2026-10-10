@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from .dart_signal_wordcloud import (
+from dart_remote.dart_signal_wordcloud import (
     KeywordExtractor,
     SignalConfig,
     _canonical,
@@ -14,7 +14,11 @@ from .dart_signal_wordcloud import (
     score_keywords,
     wordcloud_items,
 )
-from .signal_keyword_rules import GENERIC_VOCABULARY, SEMICONDUCTOR_VOCABULARY, SectorVocabulary
+from dart_remote.signal_keyword_rules import (
+    AUTOMOBILE_VOCABULARY, BANK_VOCABULARY, GENERIC_VOCABULARY,
+    HEALTHCARE_VOCABULARY, SEMICONDUCTOR_VOCABULARY,
+    SECTOR_VOCABULARIES, SectorVocabulary,
+)
 
 
 class SectorIsolationTests(unittest.TestCase):
@@ -85,6 +89,53 @@ class SectorIsolationTests(unittest.TestCase):
             row["signal_score"] - row["concentration_penalty"] - row["generic_business_penalty"],
         )
         self.assertEqual(wordcloud_items(result)[0]["size"], round(result.iloc[0]["final_signal_score"], 2))
+
+    def test_shared_field_roles_do_not_remove_technical_phrases(self) -> None:
+        for phrase in ("계약 상대방", "진행 경과", "유동 자산", "공정 가치", "일정 수준"):
+            self.assertFalse(_is_informative_phrase(phrase))
+        for phrase in ("데이터 센터", "회생 제동", "품질 향상"):
+            self.assertTrue(_is_informative_phrase(phrase))
+        self.assertFalse(_is_informative_phrase("신용 위험"))
+        self.assertTrue(_is_informative_phrase("신용 위험", BANK_VOCABULARY))
+
+    def test_new_sector_vocabularies_are_isolated(self) -> None:
+        self.assertEqual(set(SECTOR_VOCABULARIES), {
+            "KRX_SEMI", "KRX_AUTO", "KRX_HEALTH", "KRX_STEEL", "KRX_BANK",
+        })
+        for code in ("KRX_AUTO", "KRX_HEALTH", "KRX_STEEL", "KRX_BANK"):
+            vocabulary = SignalConfig(code).vocabulary
+            self.assertIs(vocabulary, SECTOR_VOCABULARIES[code])
+            self.assertEqual(_canonical("hbm3", vocabulary), "hbm3")
+
+    def test_noun_phrase_does_not_cross_line_boundary(self) -> None:
+        extractor = KeywordExtractor([])
+        tokens = [
+            SimpleNamespace(form="가나다", tag="NNG", start=0, len=3),
+            SimpleNamespace(form="라마바", tag="NNG", start=4, len=3),
+        ]
+        extractor.kiwi = SimpleNamespace(tokenize=lambda texts: [tokens for _ in texts])
+        separated, joined = extractor.extract_many(["가나다\n라마바", "가나다 라마바"])
+        self.assertNotIn("가나다 라마바", separated)
+        self.assertIn("가나다 라마바", joined)
+
+    def test_short_english_requires_sector_protection(self) -> None:
+        found = KeywordExtractor([], vocabulary=AUTOMOBILE_VOCABULARY).extract_many(
+            ["IT EU US EV HEV PE"]
+        )[0]
+        self.assertTrue({"EV", "HEV", "PE"}.issubset(found))
+        self.assertTrue({"IT", "EU", "US"}.isdisjoint(found))
+
+    def test_phrase_aliases_are_recanonicalized(self) -> None:
+        bank = KeywordExtractor([], vocabulary=BANK_VOCABULARY).extract_many(
+            ["기업 금융과 신용 위험"]
+        )[0]
+        self.assertIn("기업금융", bank)
+        self.assertIn("신용위험", bank)
+        health = KeywordExtractor([], vocabulary=HEALTHCARE_VOCABULARY).extract_many(
+            ["미국 FDA와 식품의약품안전처, 후보 물질 및 라이선스 계약"]
+        )[0]
+        self.assertIn("FDA", health)
+        self.assertIn("식품의약품안전처", health)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import os
 import random
 import time
 import threading
+from dart_remote.llm_diagnostics import repair_task,record_validation
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from .config import load_env, SERVICE_ROOT
@@ -232,7 +233,8 @@ def request_report(
     validator=None,
     _repair=None,
     max_output_tokens=14000,
-    temperature=None
+    temperature=None,
+    allow_repair=True
 ):
     load_env()
 
@@ -248,7 +250,7 @@ def request_report(
     content = compact
     if _repair is not None:
         content = dict(materials=content, correction=_repair,
-            task='검증 오류를 수정한 전체 JSON을 반환합니다. 제공된 JSON Schema와 입력 근거 ID를 따릅니다.')
+            task=repair_task(schema)+(' 출력 한도에 도달했습니다. 선택 근거의 평가만 반환하고 각 reason은 50자 이내로 줄이세요. 요약과 근거의 적격 조건은 유지하세요.' if _repair.get('compact_output') and 'sentences' in schema.get('properties',{}) else ' 불필요한 설명 없이 스키마에 맞는 간결한 JSON을 반환하세요.' if _repair.get('compact_output') else ''))
     system_text = instruction
 
     payload = {
@@ -292,6 +294,10 @@ def request_report(
             with urlopen(request, timeout=180) as response:
                 body = json.load(response)
             break
+        except json.JSONDecodeError:
+            if attempt<2:
+                time.sleep(retry_delay(attempt));continue
+            raise RuntimeError('Gemini HTTP 응답 JSON 해석 실패. 기존 보고서는 보존됩니다.') from None
         except HTTPError as error:
             retryable = error.code in (
                 408, 429, 500, 502, 503, 504
@@ -335,20 +341,10 @@ def request_report(
     finish_reason = None
 
     try:
-        candidate = body['candidates'][0]
-        finish_reason = candidate.get('finishReason')
-
+        from dart_remote.response_validation import response_text
+        text,finish_reason=response_text(body)
         if finish_reason != 'STOP':
-            raise ValueError(
-                'Gemini 응답이 정상 종료되지 않았습니다. '
-                f'finishReason={finish_reason!r}'
-            )
-
-        text = ''.join(
-            p.get('text', '')
-            for p in candidate['content']['parts']
-            if not p.get('thought')
-        )
+            raise ValueError(f'Gemini 응답이 정상 종료되지 않았습니다. finishReason={finish_reason!r}')
 
         report = validator(
             json.loads(text),
@@ -362,33 +358,15 @@ def request_report(
         )
 
     except (KeyError, IndexError, TypeError, ValueError) as error:
-        diagnostic = dict(
-            error=str(error),
-            finish_reason=finish_reason,
-            response=text,
-            allowed_ids=[
-                {
-                    'id': e['id'],
-                    'year': e['year']
-                }
-                for e in evidence
-            ],
-            rule='JSON Schema와 입력 근거 ID 검증'
-        )
+        diagnostic=record_validation(error,finish_reason,text,evidence,context,schema,repair=_repair is not None)
 
-        name = hashlib.sha256(
-            json.dumps(
-                diagnostic,
-                ensure_ascii=False
-            ).encode()
-        ).hexdigest()
-
-        save_json(
-            DATA / 'llm_errors' / (name + '.json'),
-            diagnostic
-        )
-
-        if _repair is None:
+        if finish_reason in ('SAFETY','BLOCKLIST','PROHIBITED_CONTENT','SPII','RECITATION','IMAGE_SAFETY'):
+            raise RuntimeError(f'Gemini 정책/인용 제한으로 응답이 중단됐습니다. finishReason={finish_reason}. 기존 보고서는 보존됩니다.') from None
+        if finish_reason=='NO_CANDIDATES':
+            raise RuntimeError('Gemini 응답 후보가 없습니다. 진단 기록을 확인하세요. 기존 보고서는 보존됩니다.') from None
+        if _repair is None and allow_repair:
+            if finish_reason=='MAX_TOKENS':
+                diagnostic=dict(diagnostic,response='',compact_output=True)
             print(
                 '분석 응답 검증 실패 · '
                 '근거 목록으로 한 차례 교정합니다.',
@@ -402,7 +380,7 @@ def request_report(
                 instruction=instruction,
                 validator=validator,
                 _repair=diagnostic,
-                max_output_tokens=max_output_tokens,temperature=temperature
+                max_output_tokens=max_output_tokens,temperature=temperature,allow_repair=allow_repair
             )
 
         raise RuntimeError(

@@ -9,7 +9,7 @@ def main():
     p.add_argument('--sector');p.add_argument('--company');p.add_argument('--year',type=int)
     p.add_argument('--report-type',default='FY');p.add_argument('--value-type')
     p.add_argument('--question',required=True);p.add_argument('--intent',choices=['financial','filing','hybrid'],default='hybrid')
-    p.add_argument('--prompt-version',choices=['new','old'],default='new');p.add_argument('--llm',action='store_true');args=p.parse_args()
+    p.add_argument('--prompt-version',choices=['new','new2','old'],default='new');p.add_argument('--llm',action='store_true');args=p.parse_args()
     import os
     os.environ['LLM_PROMPT_VERSION']=args.prompt_version
     global prompts

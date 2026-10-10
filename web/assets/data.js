@@ -1,7 +1,9 @@
 // Replace only this adapter when connecting your API. No sample data fallback.
 export async function loadProject() {
   const params=new URLSearchParams(location.search); const sector=params.get('sector')||params.get('company')?.split(':').slice(0,-1).join(':');
-  const response=await fetch('/api/project'+(sector?'?sector='+encodeURIComponent(sector):''));
+  const query=new URLSearchParams();if(sector)query.set('sector',sector);
+  if(params.get('company'))query.set('code',params.get('company').split(':').at(-1));
+  const response=await fetch('/api/project'+(query.size?'?'+query:''));
   if (!response.ok) throw new Error(`데이터 요청 실패 (${response.status})`);
   const data = await response.json();
   if (!Array.isArray(data.sectors) || !Array.isArray(data.companies)) {
@@ -26,9 +28,9 @@ export const stockChange = value => number(value)
   ? `${value > 0 ? '▲ ' : value < 0 ? '▼ ' : ''}${Math.abs(value).toFixed(2)}%` : '—';
 export const direction = value => number(value) ? value > 0 ? 'up' : value < 0 ? 'down' : 'neutral' : 'neutral';
 export const metricCatalog = {
-  revenue: {title:'매출 성장 추이', question:'요즘 성장하고 있나요?', unit:'지수',
-    formula:'분기 매출액 ÷ 첫 표시 분기 매출액 × 100',
-    help:'각 기업의 첫 표시 분기 매출을 100으로 놓고 성장 흐름을 비교합니다. 툴팁에서는 실제 매출액을 확인할 수 있습니다.'},
+  revenue: {title:'매출 지수', question:'요즘 성장하고 있나요?', unit:'지수',
+    formula:'분기 매출액 ÷ 최초 분석 분기 매출액 × 100',
+    help:'최초 분석 분기 매출액을 100으로 두고 비교합니다. 툴팁에서는 실제 매출액을 확인할 수 있습니다.'},
   operating: {title:'영업이익률 추이', question:'팔아서 얼마나 남기고 있나요?', unit:'%',
     formula:'영업이익 ÷ 매출액 × 100', help:'매출에서 본업에 드는 비용을 빼고 남는 이익의 비율입니다.'},
   capex: {title:'매출 대비 CAPEX', question:'기업들이 투자를 늘리고 있나요?', unit:'%',
@@ -39,11 +41,12 @@ export const metricCatalog = {
 };
 export function metricSeries(company, key, periods) {
   const rows = new Map((company.financials || []).map(row => [row.period, row]));
-  const baseline = rows.get(periods[0])?.revenue;
+
   return periods.map(period => {
     const row = rows.get(period);
     if (!row) return null;
-    if (key === 'revenue') return ratio(row.revenue, baseline);
+    if (row.metrics) return number(row.metrics[key]) ? row.metrics[key] : null;
+    if (key === 'revenue') {const base=rows.get(periods[0]);return row.basis===base?.basis?ratio(row.revenue,base?.revenue):null;}
     if (key === 'operating') return ratio(row.operatingProfit, row.revenue);
     if (key === 'capex') return ratio(row.capex, row.revenue);
     if (key === 'fcf') return ratio(number(row.operatingCashFlow) && number(row.capex)

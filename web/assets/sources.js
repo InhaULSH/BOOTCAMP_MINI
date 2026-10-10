@@ -20,7 +20,7 @@ export async function showSource(ref,sector){
   }catch(error){explain('공시 원문',`<p>${escape(error.message)}</p>`);}
 }
 export async function showQuarterSource(company,period,key){
-  const [year,q]=period.split(' ');const mapped={revenue:'revenue',operating:'operating_income',capex:'capex',fcf:'fcf'}[key];
+  const [year,q]=period.split(' ');const mapped=(company.metricProfile==='bank'?{revenue:'bank_growth',operating:'roe',capex:'credit_cost',fcf:'equity_ratio'}:{revenue:'revenue',operating:'operating_income',capex:company.metricProfile==='health'?'rd':'capex',fcf:'fcf'})[key];
   explain(company.name+' · '+period+' 원문','<p>분기 수치의 원본 표를 확인하는 중입니다.</p>');dialog().classList.add('source-dialog');
   try{
     const response=await fetch('/api/quarter-source?'+new URLSearchParams({sector:company.sectorId,code:company.code,year,quarter:q.slice(1),key:mapped}));

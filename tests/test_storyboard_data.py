@@ -12,7 +12,7 @@ class FakeRepo:
         return dict(revenue=value,operating_income=value,capex=value,operating_cashflow=value,basis=basis)
 
 class StoryboardTests(unittest.TestCase):
-    def test_cumulative_to_quarters(self):
+    def test_missing_direct_quarters_rebuild_cumulative(self):
         c={'code':'a','history':[{'year':2025,'basis':'CFS'}]}
         rows=quarter_rows(FakeRepo(),c,[2025])
         self.assertEqual([r['revenue'] for r in rows],[100]*4)

@@ -15,6 +15,7 @@ from pathlib import Path
 from threading import RLock
 import numpy as np
 from . import db
+from .asset_versions import compatible_pairs
 
 MODEL = 'BAAI/bge-m3'
 REVISION = '5617a9f61b028005a4858fdac845db406aefb181'
@@ -46,29 +47,39 @@ def contract():
         raise ValueError('저장 벡터와 질문 임베딩의 모델·리비전·차원·정규화 계약이 다릅니다.')
     if meta['searchable_vector_count'] != meta['faiss_ntotal']:
         raise ValueError('메타데이터의 검색 청크·벡터 개수가 다릅니다.')
+    for a,b in [('vector_sqlite_sha256','sqlite_sha256'),('faiss_sha256','faiss_sha256')]:
+        if version.get(a) and version[a]!=meta.get(b):
+            raise ValueError('현재 버전과 임베딩 메타데이터의 내용 해시가 다릅니다.')
+    pairs=compatible_pairs(version)
     global _integrity
-    signature = (os.getenv('MYSQL_HOST'), os.getenv('MYSQL_DATABASE'), os.getenv('CLOUD_SQL_INSTANCE'), version['data_version'], version['index_version'], meta['faiss_sha256'], meta['searchable_vector_count'])
+    signature = (os.getenv('MYSQL_HOST'), os.getenv('MYSQL_PORT'), os.getenv('MYSQL_DATABASE'), os.getenv('CLOUD_SQL_INSTANCE'), version['data_version'], version['index_version'], meta['faiss_sha256'], meta.get('sqlite_sha256'), meta['searchable_vector_count'],tuple(map(tuple,pairs)))
     # Version/validated state are read every time; full join integrity is checked
     # at most every 30 seconds, and immediately for any new snapshot contract.
     now = time.monotonic()
     if _integrity is None or _integrity[0] != signature or now - _integrity[1] >= 30:
-        _check_integrity(version, meta)
+        _check_integrity(version, meta, pairs)
         _integrity = (signature, now)
     source = {k: os.getenv(k, '') for k in ('MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_DATABASE', 'CLOUD_SQL_INSTANCE')}
     key = dict(source=source, data_version=version['data_version'], index_version=version['index_version'],
                model=MODEL, revision=REVISION, dimensions=DIM, count=meta['searchable_vector_count'],
-               sqlite_sha=meta.get('sqlite_sha256'), faiss_sha=meta.get('faiss_sha256'), format=1)
+               sqlite_sha=meta.get('sqlite_sha256'), faiss_sha=meta.get('faiss_sha256'), asset_pairs=pairs,format=2)
     return key
 
-def _check_integrity(version, meta):
+def _check_integrity(version, meta, pairs):
+    params={'v':version['data_version'],'i':version['index_version']}
+    accepted=[]
+    for n,(v,i) in enumerate(pairs):
+        params['av'+str(n)]=v;params['ai'+str(n)]=i
+        accepted.append(f'(e.data_version=:av{n} AND e.index_version=:ai{n})')
+    allowed=' OR '.join(accepted)
     check = db.rows('''SELECT COUNT(*) n,COUNT(DISTINCT m.vector_id) unique_n,
         SUM(CASE WHEN e.chunk_id IS NULL OR e.is_active<>1 OR e.vector_id<>m.vector_id
-          OR e.data_version<>m.data_version OR e.index_version<>m.index_version
+          OR e.data_version IS NULL OR e.index_version IS NULL OR NOT ('''+allowed+''')
           OR e.embedding_model<>m.embedding_model OR e.model_revision<>m.model_revision
           OR e.embedding_dimension<>m.embedding_dimension THEN 1 ELSE 0 END) bad
         FROM chunk_metadata m LEFT JOIN chunk_embeddings e ON e.chunk_id=m.chunk_id
         WHERE m.is_active=1 AND m.is_searchable=1 AND m.data_version=:v AND m.index_version=:i''',
-        {'v': version['data_version'], 'i': version['index_version']})[0]
+        params)[0]
     if check['n'] != meta['searchable_vector_count'] or check['unique_n'] != check['n'] or check['bad']:
         raise ValueError('현재 청크·벡터 개수·ID·버전이 일치하지 않습니다. 동기화 완료 후 다시 실행하세요.')
 
@@ -121,8 +132,10 @@ def snapshot(key):
                 if not page: break
                 for row in page:
                     blob = row.pop('embedding')
-                    if (row.pop('embedding_id'), row.pop('embedding_version'), row.pop('embedding_index'),
-                        row.pop('vector_model'), row.pop('vector_revision'), row.pop('vector_dimension')) != (row['vector_id'], key['data_version'], key['index_version'], MODEL, REVISION, DIM):
+                    identity=row.pop('embedding_id')
+                    pair=[row.pop('embedding_version'),row.pop('embedding_index')]
+                    model_info=(row.pop('vector_model'),row.pop('vector_revision'),row.pop('vector_dimension'))
+                    if identity!=row['vector_id'] or pair not in key['asset_pairs'] or model_info!=(MODEL,REVISION,DIM):
                         raise ValueError('청크·벡터 연결 또는 동기화 버전이 다릅니다.')
                     if len(blob) != DIM * 4: raise ValueError('벡터 BLOB 길이가 잘못되었습니다.')
                     vectors.append(np.frombuffer(blob, dtype='<f4').copy()); meta.append(row)

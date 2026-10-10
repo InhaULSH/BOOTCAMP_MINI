@@ -15,18 +15,13 @@ KRX_CODE = '5044'
 _FDR_LOCK = threading.Lock()
 
 def collect_sector_index(selected=None):
-    from .krx_api import collect_history
     from .data_access.catalog import sector
     from dart_remote import db
-    import pandas as pd
     registered=sector(selected)
     names=db.rows('SELECT index_name FROM krx_indices WHERE index_code=:i',{'i':registered.membership_code})
     name=names[0]['index_name']
-    rows=collect_history(name=name)
-    frame=pd.DataFrame({'Close':[r['value'] for r in rows]},index=pd.to_datetime([r['date'] for r in rows]))
-    from dart_remote.krx_market import collect,merge
-    recent=collect([name],DATA_ROOT/'krx_api/daily_responses')[name]
-    return merge(index_frame(frame,name=name+' 지수',code=registered.index_code),recent,registered.index_code)
+    from dart_remote.krx_market import collect_history
+    return dict(collect_history([name],DATA_ROOT/'krx_api/daily_responses',refresh=True)[name],code=registered.index_code)
 
 
 def market_context(selected):
@@ -55,7 +50,8 @@ def refresh_index_only(selected=None):
     # Keep five-company metric weights separate from the official index.
     result['representative_weights']=representative_weights(result.get('quotes',{}),[c['code'] for c in companies])
     try:
-        result['index']=collect_sector_index(registered.id)
+        from dart_remote.krx_market import merge
+        result['index']=merge(previous,collect_sector_index(registered.id),registered.index_code)
         print(registered.name+' 지수 수집 완료',flush=True)
     except Exception as error:
         reason=str(error) if isinstance(error,RuntimeError) else 'KRX API 조회 실패. 기존 자료는 보존됩니다.'
@@ -170,11 +166,11 @@ def refresh_prices(selected=None,refresh_index=True):
 def refresh_latest_indices(selected=None,force=False):
     from .data_access.catalog import sectors,sector
     from dart_remote import db
-    from dart_remote.krx_market import collect,merge
+    from dart_remote.krx_market import collect_history,merge
     from dart_remote.artifacts import put_artifact
     targets=[sector(selected)] if selected else sectors(all_sectors=True)
     names={s.id:db.rows('SELECT index_name FROM krx_indices WHERE index_code=:i',{'i':s.membership_code})[0]['index_name'] for s in targets}
-    snapshots=collect(list(names.values()),DATA_ROOT/'krx_api/daily_responses',refresh=force)
+    snapshots=collect_history(list(names.values()),DATA_ROOT/'krx_api/daily_responses',refresh=force)
     for s in targets:
         _,_,path=market_context(s.id)
         result=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}

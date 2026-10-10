@@ -8,6 +8,7 @@ import re
 import unicodedata
 import xml.etree.ElementTree as ET
 from .xml_source import decode, sanitize, reference_text, compact
+from .asset_versions import source_versions,version_filter
 
 def normalized(value):
     return ''.join(unicodedata.normalize('NFKC',c) for c in value if not c.isspace())
@@ -28,13 +29,19 @@ def read_xml(receipt,chunk_id=None,data_version=None):
     else:
         sql='SELECT raw_xml,sha256,byte_size,rcept_no,data_version,document_id FROM filing_source_documents WHERE rcept_no=:r AND is_active=1'
     if data_version:
-        params['version']=data_version
-        sql+=' AND '+('d.' if chunk_id else '')+'data_version=:version'
+        allowed=source_versions(data_version)
+        sql+=' AND '+version_filter(('d.' if chunk_id else '')+'data_version',allowed,params)
+        if chunk_id:
+            params['version']=data_version
+            sql+=' AND c.data_version=:version'
     rows=db.rows(sql,params)
     if not rows:raise FileNotFoundError('해당 청크에 연결된 활성 원본 XML이 없습니다.')
     if len(rows)!=1:raise ValueError('원본 파일이 여러 개입니다. 정확한 chunk_id 연결이 필요합니다.')
     row=rows[0]
-    if chunk_id and not row['data_version']==row['mapping_version']==row['chunk_version']:raise ValueError('원본·청크·연결 데이터 버전이 다릅니다.')
+    if chunk_id:
+        allowed=allowed if data_version else source_versions(row['chunk_version'])
+        if row['data_version'] not in allowed or row['mapping_version'] not in allowed:
+            raise ValueError('원본·청크·연결의 내용 해시 계약이 다릅니다.')
     raw=bytes(row['raw_xml'])
     if len(raw)!=row['byte_size'] or hashlib.sha256(raw).hexdigest()!=row['sha256']:raise ValueError('원본 XML의 크기 또는 SHA-256 검증에 실패했습니다.')
     return raw
@@ -69,9 +76,15 @@ def choose_occurrence(quote,summary,section,heading,candidates):
         redundancy=dict(type='string',enum=['none','some','substantial'])))
     schema=llm.object_schema(dict(assessments=dict(type='array',items=item)))
     def validate(value,allowed):
-        assessments=value.get('assessments',[])
+        if not isinstance(value,dict):raise ValueError('원문 위치 평가 결과는 객체여야 합니다.')
+        assessments=value.get('assessments')
+        if not isinstance(assessments,list):raise ValueError('원문 위치 assessments는 배열이어야 합니다.')
+        if any(not isinstance(a,dict) or not isinstance(a.get('id'),str) for a in assessments):
+            raise ValueError('원문 위치 평가 항목과 id 형식 오류')
         if len(assessments)!=len(rows) or {a.get('id') for a in assessments}!={r['id'] for r in rows}:raise ValueError('모든 실제 원문 위치를 한 번씩 평가하세요.')
         for a in assessments:
+            if not isinstance(a.get('grades'),dict):raise ValueError('원문 위치 grades는 객체여야 합니다.')
+            if type(a.get('suitable')) is not bool:raise ValueError('원문 위치 suitable은 boolean이어야 합니다.')
             if any(type(a['grades'].get(k)) is not int or not 0<=a['grades'][k]<=4 for k in ('F','U','C','T')):raise ValueError('평가 등급 오류')
             if any(a.get(k) not in ('none','some','substantial') for k in ('irrelevant_content','redundancy')):raise ValueError('감점 등급 오류')
         return value
@@ -187,7 +200,16 @@ def render(raw,quote,section='',heading='',summary=''):
     return dict(document_html=html,original_xml_sha256=hashlib.sha256(raw).hexdigest(),highlight_matched=target is not None,
         original_note='' if target else '동일 문장이 여러 곳에 있거나 XML 원문과 일치하는 위치를 확인하지 못해 강조를 생략했습니다.',xml_repairs=repairs)
 
+from .runtime_cache import Cache
+_rendered_documents=Cache(max_entries=64,max_bytes=8*1024*1024)
+
 def document_view(receipt,quote,section='',heading='',summary='',chunk_id=None,data_version=None):
-    try:return render(read_xml(receipt,chunk_id,data_version),quote,section,heading,summary)
+    try:
+        # Mapping/version/hash checks remain live, even when HTML is reused.
+        raw=read_xml(receipt,chunk_id,data_version)
+        key=(hashlib.sha256(raw).hexdigest(),quote,section,heading,summary)
+        return _rendered_documents.get(key,'html-v1',lambda:render(raw,quote,section,heading,summary),
+            size=lambda value:len(value['document_html'].encode('utf-8')),
+            accept=lambda value:value.get('highlight_matched',False))
     except (FileNotFoundError,ValueError,RuntimeError,ET.ParseError) as error:
         return dict(document_html=None,highlight_matched=False,original_note=str(error))

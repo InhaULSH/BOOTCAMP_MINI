@@ -55,7 +55,7 @@ def engine():
     return create_engine('mysql+pymysql://', creator=lambda: dart_db_client.get_connection(**args), **kwargs)
 
 
-def rows(sql, params=None):
+def _rows(sql, params=None):
     """Only SELECT statements; upstream data is never an application write store."""
     if not sql.lstrip().upper().startswith('SELECT '):raise ValueError('원격 저장소에는 SELECT 조회만 허용합니다.')
     from datetime import date,datetime
@@ -68,6 +68,20 @@ def rows(sql, params=None):
         con.execute(text('START TRANSACTION READ ONLY'))
         try:return [{k:clean(v) for k,v in r.items()} for r in con.execute(text(sql),params or {}).mappings()]
         finally:con.rollback()
+
+def rows(sql,params=None):
+    # Keep validation ahead of reuse; no mutation statements enter the cache.
+    if not sql.lstrip().upper().startswith('SELECT '):raise ValueError('원격 저장소에는 SELECT 조회만 허용합니다.')
+    import time,logging
+    from .runtime_cache import sql_value
+    key=(sql,tuple(sorted((params or {}).items())))
+    try:hash(key)
+    except TypeError:return _rows(sql,params)
+    def load():
+        start=time.perf_counter()
+        try:return _rows(sql,params)
+        finally:logging.getLogger(__name__).debug('Remote SELECT %.3fs',time.perf_counter()-start)
+    return sql_value(key,load)
 
 def close():
     global _connector

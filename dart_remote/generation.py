@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import threading
+import logging
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
 
@@ -47,7 +48,15 @@ def generate_all(report,repository,generate,force=False):
     def run(job):
         scope,company,keyword=job
         isolated=dict(report,citations={})
-        result=generate(scope,isolated,repo,company,force,keyword=keyword)
+        try:result=generate(scope,isolated,repo,company,force,keyword=keyword)
+        except (RuntimeError,ValueError,OSError) as error:
+            if not keyword:raise
+            logging.getLogger(__name__).warning('Keyword explanation unavailable: %s',error)
+            from .keyword_fallback import result as fallback
+            result=fallback(error)
+        if keyword and not result.get('sentences'):
+            from .keyword_fallback import result as fallback
+            result=fallback(result.get('insufficient_reason','')) if not result.get('fallback_reason') else result
         return result,isolated['citations']
     iterator=iter(jobs);completed=0
     with ThreadPoolExecutor(max_workers=workers,thread_name_prefix='insight') as executor:

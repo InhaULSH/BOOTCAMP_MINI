@@ -1,5 +1,6 @@
 """Prevent local feature updates silently missing from the cloud package."""
 import unittest
+import ast
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -7,6 +8,9 @@ from types import SimpleNamespace
 ROOT=Path(__file__).resolve().parents[1]
 
 class DeploymentParityTests(unittest.TestCase):
+    def test_cloud_ui_imports_are_self_contained(self):
+        tree=ast.parse((ROOT/'deploy/cloudapp/ui_project.py').read_text(encoding='utf-8'))
+        self.assertFalse(any(isinstance(n,ast.ImportFrom) and (n.module or '').startswith('data_access') for n in ast.walk(tree)))
     def test_shared_runtime_and_frontend_are_identical(self):
         for folder in ('dart_remote','web','config'):
             for source in (ROOT/folder).rglob('*'):
@@ -18,6 +22,29 @@ class DeploymentParityTests(unittest.TestCase):
 
     def test_prompt_text_is_identical(self):
         self.assertEqual((ROOT/'snapdart/data_access/prompts.py').read_bytes(),(ROOT/'deploy/cloudapp/prompts.py').read_bytes())
+        self.assertEqual((ROOT/'snapdart/data_access/prompts_new2.py').read_bytes(),(ROOT/'deploy/cloudapp/prompts_new2.py').read_bytes())
+
+    def test_llm_repair_gate_matches(self):
+        functions=[]
+        for path in ('snapdart/llm.py','deploy/cloudapp/llm.py'):
+            tree=ast.parse((ROOT/path).read_text(encoding='utf-8'))
+            functions.append(ast.dump(next(f for f in tree.body if isinstance(f,ast.FunctionDef) and f.name=='request_report'),include_attributes=False))
+        self.assertEqual(functions[0],functions[1])
+
+    def test_generation_and_atomic_cache_helpers_match(self):
+        # Missing cache helpers previously escaped copy-only parity checks.
+        functions=[]
+        class RuntimeImports(ast.NodeTransformer):
+            def visit_ImportFrom(self,node):
+                if [a.name for a in node.names]==['llm'] and node.module in (None,'snapdart'):
+                    node.module='runtime_llm';node.level=0
+                return node
+        for path in ('snapdart/data_access/pipeline.py','deploy/cloudapp/pipeline.py'):
+            tree=RuntimeImports().visit(ast.parse((ROOT/path).read_text(encoding='utf-8')))
+            functions.append({f.name:ast.dump(f,include_attributes=False)
+                              for f in tree.body if isinstance(f,ast.FunctionDef)})
+        for name in ('atomic','generate','anchor','evidence_rows','financial_history'):
+            with self.subTest(function=name):self.assertEqual(functions[0][name],functions[1][name])
 
     def test_docker_installs_original_xml_dependency(self):
         self.assertIn('requirements-lock.txt',(ROOT/'deploy/Dockerfile').read_text())

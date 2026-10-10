@@ -4,6 +4,7 @@ import math
 import os
 import time
 import uuid
+import hashlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -26,7 +27,8 @@ def numeric(value):
 
 def daily(day, cache_dir, refresh=False):
     path=Path(cache_dir)/(day.isoformat()+'.json')
-    if path.exists() and not refresh:return json.loads(path.read_text(encoding='utf-8'))
+    cached=json.loads(path.read_text(encoding='utf-8')) if path.exists() else None
+    if cached is not None and not refresh:return cached
     base=Path(__file__).resolve().parents[1]
     load_dotenv(base/'.env',override=False);load_dotenv(base.parent/'.env',override=False)
     key=os.getenv('KRX_API','').strip()
@@ -43,6 +45,8 @@ def daily(day, cache_dir, refresh=False):
             if not retryable or attempt==2:raise RuntimeError('KRX API 조회 실패. 기존 자료를 유지합니다.') from None
             time.sleep(2**attempt)
     if not isinstance(payload,dict) or not isinstance(payload.get('OutBlock_1'),list):raise RuntimeError('KRX API 응답 구조 오류')
+    # An empty refresh must not erase an already published, validated trading day.
+    if not payload['OutBlock_1'] and cached and cached.get('OutBlock_1'):return cached
     if payload['OutBlock_1']:
         path.parent.mkdir(parents=True,exist_ok=True)
         temp=path.with_name(path.name+'.'+uuid.uuid4().hex+'.tmp')
@@ -87,8 +91,79 @@ def collect(names, cache_dir, as_of=None, refresh=False):
     return result
 
 
-def merge(old, current, code):
-    cutoff=current['traded_at']
-    history={r['date']:r['value'] for r in old.get('history',[]) if r['date']<=cutoff}
+def _save(path, payload):
+    path.parent.mkdir(parents=True,exist_ok=True)
+    temporary=path.with_name(path.name+'.'+uuid.uuid4().hex+'.tmp')
+    try:
+        temporary.write_text(json.dumps(payload,ensure_ascii=False),encoding='utf-8')
+        temporary.replace(path)
+    finally:temporary.unlink(missing_ok=True)
+
+
+def collect_history(names, cache_dir, as_of=None, refresh=False):
+    """Backfill three calendar years, resume per date, then refresh only recent days."""
+    names=list(dict.fromkeys(names))
+    if not names:return {}
+    today=as_of or today_korea();end=today-timedelta(days=1)
+    try:start=end.replace(year=end.year-3)
+    except ValueError:start=end.replace(year=end.year-3,day=28)
+    recent=end-timedelta(days=7);states={};paths={}
+    for name in names:
+        path=Path(cache_dir)/'history'/(hashlib.sha256(name.encode()).hexdigest()+'.json')
+        state=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+        states[name]=state if state.get('index')==name else dict(index=name,days={})
+        paths[name]=path
+    calendar=[];day=end
+    while day>=start:
+        if day.weekday()<5:calendar.append(day)
+        day-=timedelta(days=1)
+    pending=[d for d in calendar if d>=recent or any(d.isoformat() not in s['days'] for s in states.values())]
+    for number,day in enumerate(pending,1):
+        rows=daily(day,cache_dir,refresh=refresh and day>=recent)['OutBlock_1']
+        for name,state in states.items():
+            key=day.isoformat()
+            if key in state['days'] and day<recent:continue
+            if not rows:
+                # Recheck recent unpublished dates on the next run, preserve valid points.
+                state['days'].setdefault(key,None)
+            else:
+                found=[r for r in rows if str(r.get('IDX_NM','')).strip()==name]
+                if len(found)!=1:raise RuntimeError(f'KRX API에 {name}이 없거나 중복됩니다.')
+                row=found[0]
+                try:
+                    actual=datetime.strptime(str(row['BAS_DD']).replace('-',''),'%Y%m%d').date()
+                    value=numeric(row['CLSPRC_IDX']);cap=int(str(row['MKTCAP']).replace(',',''))
+                    if actual!=day or value<=0 or cap<=0:raise ValueError()
+                except (KeyError,TypeError,ValueError):raise RuntimeError(f'{name} 기준일·종가·전체 시가총액 검증 실패') from None
+                state['days'][key]=dict(date=key,value=value,cap=cap)
+            _save(paths[name],state)
+        if number==1 or number%50==0:print(f'KRX 지수 날짜 수집 {number}/{len(pending)} · {day}',flush=True)
+        time.sleep(.12)
+    result={}
+    for name,state in states.items():
+        state['days']={d:p for d,p in state['days'].items() if start.isoformat()<=d<=end.isoformat()}
+        _save(paths[name],state)
+        points=[p for d,p in sorted(state['days'].items()) if p is not None]
+        if len(points)<2:raise RuntimeError(f'{name}: 전일까지의 두 거래일 KRX 자료가 필요합니다.')
+        previous,current=points[-2:]
+        result[name]=dict(name=name+' 지수',source='KRX OPEN API',stale=False,
+            history=[dict(date=p['date'],value=p['value']) for p in points],
+            price=current['value'],traded_at=current['date'],previous_traded_at=previous['date'],
+            change=(current['value']/previous['value']-1)*100,point_change=current['value']-previous['value'],
+            constituent_market_cap=current['cap'],market_cap_traded_at=current['date'],
+            market_cap_source='KRX OPEN API MKTCAP',market_cap_scope='all_index_constituents',
+            price_basis='previous_session_close')
+    return result
+
+
+def merge(old, current, code, as_of=None):
+    today=as_of or today_korea();cutoff=today.isoformat();end=today-timedelta(days=1)
+    try:start=end.replace(year=end.year-3).isoformat()
+    except ValueError:start=end.replace(year=end.year-3,day=28).isoformat()
+    if old.get('code') not in (None,code):old={}
+    history={r['date']:r['value'] for r in old.get('history',[]) if r['date']<cutoff}
     history.update({r['date']:r['value'] for r in current['history']})
+    history={d:v for d,v in history.items() if start<=d<cutoff}
+    if old.get('traded_at','')>current['traded_at'] and old['traded_at']<cutoff:
+        current=dict(old,stale=True,error='새 조회가 저장된 최신 기준일보다 과거여서 최신 자료를 유지합니다.')
     return dict(current,code=code,history=[dict(date=d,value=v) for d,v in sorted(history.items())])

@@ -1,14 +1,16 @@
 """Conservative financial-table fallback when upstream JSON facts are absent.
 
-No LLM estimates, upstream writes, or per-metric filling of existing JSON data.
+No LLM estimates or upstream writes. CAPEX verification may independently
+re-read a current original even when standardized JSON facts exist.
 """
 import hashlib
 import re
 from decimal import Decimal, InvalidOperation
 from . import db, artifacts
 from .original_document import parsed
+from .asset_versions import source_versions,version_filter
 
-VERSION='xml-financial-v2'
+VERSION='xml-financial-v3-capex'
 END_MONTH={'Q1':3,'H1':6,'Q3':9,'FY':12}
 ALIASES={
     'revenue':('매출액','수익(매출액)','영업수익','수익'),
@@ -111,6 +113,7 @@ def extract_facts(raw,year,report_type,basis,value_type,receipt,document_id):
                     if kind!='BS' and period in ('annual','cumulative') and not any(y==year and m==1 and d==1 for y,m,d in dates):continue
                     amount=number(cell['text'],multiplier)
                     if amount is None:continue
+                    signed_amount=amount
                     if key=='capex':amount=abs(amount)
                     if account(label['text'])=='영업손실':amount=-abs(amount)
                     candidates.append(dict(key=key,value=amount,currency='KRW',sj_div=kind,
@@ -118,7 +121,11 @@ def extract_facts(raw,year,report_type,basis,value_type,receipt,document_id):
                         table_index=table_index,row_index=cell['row'],column_index=cell['column'],
                         source_text=' '.join(c['text'] for c in row),section='III. 재무에 관한 사항',heading=heading,
                         original_table=rows,original_unit=units[-1],
-                        fs_div=basis,value_type=period,source_kind='xml',is_derived=False,calculation_method=None))
+                        fs_div=basis,value_type=period,source_kind='xml',is_derived=False,calculation_method=None,
+                        signed_normalized_value=signed_amount,sign_normalized=int(signed_amount<0),
+                        source_account_ids=[label['text']],active_rcept_no=receipt,
+                        year=year,period_start=f'{year}-01-01',
+                        period_end=f'{year}-'+{'Q1':'03-31','H1':'06-30','Q3':'09-30','FY':'12-31'}[report_type]))
                 # Multiple compatible columns are not resolved by choosing the first.
                 if len(candidates)==1:found.extend(candidates)
     return found
@@ -127,15 +134,18 @@ def load(repo,code,year,report_type,basis,value_type):
     version=repo.sector.data_version.split(':',1)[0]
     docs=[d for d in repo.documents(code) if d['year']==int(year) and d['report_type']==report_type]
     if not docs:return [],'해당 기간 원본 공시가 없습니다.'
-    receipt=max(docs,key=lambda d:(d.get('rcept_dt') or '',d['rcept_no']))['rcept_no']
-    documents=db.rows('SELECT document_id,sha256,byte_size FROM filing_source_documents '
-        'WHERE rcept_no=:r AND data_version=:v AND is_active=1',dict(r=receipt,v=version))
+    if len({d['rcept_no'] for d in docs})!=1:return [],'활성 접수번호가 여러 개여서 원문 기준을 확정할 수 없습니다.'
+    receipt=docs[0]['rcept_no']
+    params=dict(r=receipt)
+    condition=version_filter('data_version',source_versions(version),params)
+    documents=db.rows('SELECT document_id,sha256,byte_size,data_version FROM filing_source_documents '
+        'WHERE rcept_no=:r AND '+condition+' AND is_active=1',params)
     cache_key=hashlib.sha256(repr((VERSION,version,receipt,documents,year,report_type,basis,value_type)).encode()).hexdigest()
     cached=artifacts.get_artifact('_xml_financial','facts',cache_key)
     if cached is not None:return cached['rows'],cached['note']
     rows=[];errors=[]
     for doc in documents:
-        source=db.rows('SELECT raw_xml FROM filing_source_documents WHERE document_id=:d AND data_version=:v AND is_active=1',dict(d=doc['document_id'],v=version))
+        source=db.rows('SELECT raw_xml FROM filing_source_documents WHERE document_id=:d AND data_version=:v AND is_active=1',dict(d=doc['document_id'],v=doc['data_version']))
         if not source:raise RuntimeError('XML 조회 중 데이터가 변경되었습니다.')
         raw=bytes(source[0]['raw_xml'])
         if len(raw)!=doc['byte_size'] or hashlib.sha256(raw).hexdigest()!=doc['sha256']:

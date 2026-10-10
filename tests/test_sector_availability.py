@@ -37,7 +37,7 @@ class SectorAvailabilityTests(unittest.TestCase):
         def rows(sql,params=None):
             if 'data_versions' in sql:return [dict(validated=True,data_version='v',index_version='i')]
             if 'krx_indices' in sql:return [dict(display_name=n,index_name=n,index_code=c,official_index_code=None) for n,c in [('바이오','BIO'),('반도체','KRX_SEMI')]]
-            self.assertEqual(params['i'],'KRX_SEMI')
-            return [dict(n=5)] if 'COUNT(*)' in sql else []
+            self.assertEqual(params,{'i0':'KRX_SEMI'})
+            return [dict(index_code='KRX_SEMI',corp_code='c',effective_from=None,effective_to=None,source_as_of=None,is_operational=1)]
         with patch.dict('os.environ',{'SNAPDART_SECTORS':'반도체'}),patch('dart_remote.catalog.db.rows',side_effect=rows):
             self.assertEqual([s.name for s in sectors()],['반도체'])

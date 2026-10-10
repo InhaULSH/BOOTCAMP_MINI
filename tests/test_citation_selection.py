@@ -104,12 +104,12 @@ class CitationSelectionTests(unittest.TestCase):
         from dart_remote.original_document import read_xml
         raw=b'<DOC>original</DOC>'
         row=dict(raw_xml=raw,sha256=hashlib.sha256(raw).hexdigest(),byte_size=len(raw),data_version='v',mapping_version='v',chunk_version='v')
-        with patch('dart_remote.db.rows',return_value=[row]) as rows:
+        with patch('dart_remote.original_document.source_versions',return_value=['v']),patch('dart_remote.db.rows',return_value=[row]) as rows:
             self.assertEqual(read_xml('20260312001230','chunk','v'),raw)
         self.assertIn('chunk_source_documents',rows.call_args.args[0])
-        self.assertEqual(rows.call_args.args[1],dict(r='20260312001230',chunk='chunk',version='v'))
+        self.assertEqual(rows.call_args.args[1],dict(r='20260312001230',chunk='chunk',version='v',asset_v0='v'))
         for key,val in [('sha256','bad'),('byte_size',1),('mapping_version','wrong')]:
-            with patch('dart_remote.db.rows',return_value=[dict(row,**{key:val})]),self.assertRaises(ValueError):read_xml('20260312001230','chunk','v')
+            with patch('dart_remote.original_document.source_versions',return_value=['v']),patch('dart_remote.db.rows',return_value=[dict(row,**{key:val})]),self.assertRaises(ValueError):read_xml('20260312001230','chunk','v')
 
     def test_receipt_alone_cannot_guess_attachment(self):
         from dart_remote.original_document import read_xml

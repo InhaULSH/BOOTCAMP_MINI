@@ -9,6 +9,7 @@ from .repository import Repository,REPORTS,ACCOUNTS
 from . import prompts
 from . import prompts as prompt_profiles
 from dart_remote import citation_selection as selection
+from dart_remote.capex_validation import verified_financial
 
 def ratio(a,b):return a/b*100 if a is not None and b is not None and b>0 else None
 def growth(a,b):return ratio(a-b,b) if a is not None and b is not None else None
@@ -22,8 +23,8 @@ def atomic(path,value):
 def financial_history(repo,code,years):
     history=[]
     for year in years:
-        row=repo.financial(code,year)
-        if row['basis'] is None:row=repo.financial(code,year,basis='OFS')
+        row=verified_financial(repo,code,year)
+        if row['basis'] is None:row=verified_financial(repo,code,year,basis='OFS')
         previous=next((r for r in history if r['year']==year-1 and r['basis']==row['basis']),{})
         row['yoy']={key:growth(row[key],previous.get(key)) for key in ('revenue','operating_income','capex','operating_cashflow')}
         row['margin']=ratio(row['operating_income'],row['revenue']);row['capex_ratio']=ratio(row['capex'],row['revenue'])
@@ -60,6 +61,10 @@ def evidence_rows(repo,companies,years):
 def generate(scope,report,repo,company=None,force=False,keyword=None):
     prompts=prompt_profiles.active()
     selection=prompt_profiles.selection_profile()
+    from dart_remote import retrieval_context,insight_plan
+    modern=prompts is prompt_profiles or getattr(prompts,'TWO_STAGE',False)
+    two_stage=getattr(prompts,'TWO_STAGE',False)
+    fact_limit=5 if company or keyword else 10
     from snapdart import llm
     companies=[company] if company else report['companies']
     rows=[] if keyword else evidence_rows(repo,companies,report['years'])
@@ -68,11 +73,13 @@ def generate(scope,report,repo,company=None,force=False,keyword=None):
         rows=[dict(r,anchor_start=0,text=r['text']) for r in rows]
         if not rows:
             return dict(sentences=[],method='관련 공시 근거 부족')
+        if modern:rows=retrieval_context.historical_anchors(repo,rows,report['years'],keyword)
     rows=selection.bounded_rows([r for r in rows if selection.passages(r['text'])],report['years'])
     citations=report['citations'];evidence=[];refs={}
     for i,row in enumerate(rows,1):
         eid='t'+str(i);refs[eid]=anchor(row,citations,start=row['anchor_start'])
-        evidence.append(dict(id=eid,kind='filing',chunk_id=row['chunk_id'],year=row['year'],company=row['company'],period=row['period'],section=row['section'],heading=row['heading'],text=row['text'],passages=[dict(p,id=eid+'-p'+str(j)) for j,p in enumerate(selection.passages(row['text']),1)]))
+        evidence.append(dict(id=eid,kind='filing',chunk_id=row['chunk_id'],year=row['year'],company=row['company'],period=row['period'],section=row['section'],heading=row['heading'],text=row['text'],passages=[dict(p,id=eid+'-p'+str(j)) for j,p in enumerate(selection.passages(row['text']),1)],historical_anchor=row.get('historical_anchor',False)))
+    if modern:retrieval_context.add_context(evidence)
     financial=[]
     for c in companies:
         records=[]
@@ -81,7 +88,7 @@ def generate(scope,report,repo,company=None,force=False,keyword=None):
         # Include quarter/half-year changes without confusing quarterly and cumulative CF.
         interim=[];interim_records=[]
         for report_type in ('Q1','H1','Q3'):
-            f=repo.financial(c['code'],report['years'][-1],report_type,basis=c['history'][-1]['basis'] or 'CFS')
+            f=verified_financial(repo,c['code'],report['years'][-1],report_type,basis=c['history'][-1]['basis'] or 'CFS')
             interim.append({k:f[k] for k in ('year','report_type','basis','revenue','operating_income','capex','operating_cashflow')})
             interim_records.append(f)
         financial.append(dict(company=c['name'],annual=records,interim_cumulative=interim))
@@ -104,7 +111,7 @@ def generate(scope,report,repo,company=None,force=False,keyword=None):
             refs[eid]=key
             evidence.append(dict(id=eid,kind='financial',year=f['year'],company=c['name'],values=values))
     if not rows and not any(any(r.get(k) is not None for k in ACCOUNTS) for c in companies for r in c['history']):
-        if prompts is prompt_profiles:
+        if modern:
             return dict(sentences=[],method='분석 근거 부족',selection_version=selection.VERSION,insufficient_reason='확인 가능한 재무·공시 자료가 부족합니다.')
         return dict(sentences=[dict(text='확인 가능한 데이터가 부족합니다.',source_refs=[])],method='분석 근거 부족')
     if not rows:
@@ -123,34 +130,56 @@ def generate(scope,report,repo,company=None,force=False,keyword=None):
                 'mention_rate':'최신 분석 연도 대상 청크 중 키워드 포함 청크 비율; 0-1 척도',
                 'change_raw':'전체 분석 연도의 인접 연도 언급 비율 차이를 최근 구간에 더 큰 비중으로 가중평균; 3개년이면 0.4/0.6, 1개년이면 변화 0; 전년 대비 증가율이 아님'}
     context['evidence']=evidence
+    if modern:
+        context['retrieval_guidance']=retrieval_context.NOTE
+        context['retrieval_policy']=retrieval_context.VERSION
+    context['prompt_version']=prompts.VERSION
     context.pop('retrieved_chunks',None)  # Do not transmit the same chunk twice.
-    instruction=prompts.instruction(function)+"\n"+selection.INSTRUCTION
+    from dart_remote.response_validation import OUTPUT_NOTE,VERSION as RESPONSE_VERSION,validate_money,cached_result
+    instruction=prompts.instruction(function)+"\n"+selection.INSTRUCTION+"\n"+OUTPUT_NOTE
     # Short customer summaries plus the existing per-sentence assessment JSON.
     # PDF 300/500-token limits cannot fit the later requested evidence grading.
-    maximum=2 if keyword else None if company and prompts is not prompt_profiles else 3;minimum=1
+    maximum=2 if keyword else None if company and not modern else 3
+    minimum=1
     schema=selection.schema(llm,minimum,maximum,evidence)
+    active_plan=None
     def validate(value,allowed):
         selection.validate(value,evidence,minimum,maximum)
-        # Check monetary statements against their cited numeric evidence, allowing only rounding.
-        money_pattern=r'(?:(\d[\d,.]*)\s*조\s*)?(?:(\d[\d,.]*)\s*억\s*)?(?:(\d[\d,.]*)\s*만\s*)?(\d[\d,.]*)?\s*원'
-        for sentence in value['sentences']:
-            cited=[e for e in evidence if e['id'] in sentence['refs']]
-            for match in re.finditer(money_pattern,sentence['text']):
-                if not any(match.groups()):continue
-                amount=sum(float(v.replace(',',''))*scale for v,scale in zip(match.groups(),(1e12,1e8,1e4,1)) if v)
-                values=[e['values'].get(k) for e in evidence if e['kind']=='financial' and e['company'] in {r['company'] for r in cited} for k in ACCOUNTS if e['values'].get(k) is not None]
-                literal=match.group().replace(' ','')
-                unit_precision=min(scale*10**(-len(v.split('.')[-1]) if '.' in v else 0) for v,scale in zip(match.groups(),(1e12,1e8,1e4,1)) if v)
-                signed_amount=-amount if sentence['text'][max(0,match.start()-1):match.start()] in ('-','−') else amount
-                if not any(abs(v-signed_amount)<=unit_precision/2+1e-6 for v in values) and not any(literal in e.get('text','').replace(' ','') for e in cited):raise ValueError('문장 금액이 인용한 입력 근거와 일치하지 않습니다.')
-        return value
-    digest=hashlib.sha256(json.dumps([prompts.VERSION,instruction,context,llm.PROVIDER,llm.MODEL],sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+        if two_stage:
+            plan=insight_plan.validate(active_plan if active_plan is not None else value.get('_evidence_plan'),evidence,fact_limit)
+            insight_plan.validate_final(value,plan)
+        return validate_money(value,evidence)
+    digest=hashlib.sha256(json.dumps([prompts.VERSION,selection.VERSION,RESPONSE_VERSION,insight_plan.VERSION if two_stage else None,schema,instruction,context,llm.PROVIDER,llm.MODEL],sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     cache=SERVICE/repo.sector.id/'llm'/(digest+'.json')
-    if cache.exists() and not force:result=json.loads(cache.read_text(encoding='utf-8'));validate(result['report'],evidence)
-    else:
-        result=llm.request_report(context,evidence,schema=schema,instruction=instruction,validator=validate,max_output_tokens=8192,temperature=1.0)
+    def create():
+        nonlocal active_plan
+        final_context=context
+        planning=None
+        if two_stage:
+            plan_cache=cache.with_name(digest+'-plan.json')
+            plan_context=dict(context,generation_stage='fact_extraction',max_facts=fact_limit,task=f'정확한 원문에 연결된 중요한 사실을 최대 {fact_limit}개 정리하세요.')
+            def validate_plan(value,allowed):return insight_plan.validate(value,allowed,fact_limit)
+            def extract():
+                prepared=llm.request_report(plan_context,evidence,schema=insight_plan.schema(llm,evidence,fact_limit),
+                    instruction=prompts.COMMON+'\n'+insight_plan.INSTRUCTION,validator=validate_plan,
+                    max_output_tokens=8192,temperature=1.0,allow_repair=False)
+                atomic(plan_cache,prepared)
+                return prepared
+            planning=extract() if force else cached_result(plan_cache,lambda v:validate_plan(v,evidence),extract)
+            active_plan=validate_plan(planning['report'],evidence)
+            final_context=dict(context,evidence_plan=active_plan,generation_stage='insight_draft')
+        if two_stage and not active_plan['facts']:
+            result=dict(report=dict(sentences=[],insufficient_reason=active_plan['insufficient_reason']),
+                usage={},model=planning.get('model',llm.MODEL))
+        else:
+            result=llm.request_report(final_context,evidence,schema=schema,instruction=instruction,validator=validate,max_output_tokens=8192,temperature=1.0)
+        if two_stage:
+            result['report']['_evidence_plan']=active_plan
+            result['planning']=dict(prompt_version=insight_plan.VERSION,usage=planning.get('usage',{}),model=planning.get('model',llm.MODEL))
         result['input_snapshot']=selection.snapshot(evidence)
         atomic(cache,result)
+        return result
+    result=create() if force else cached_result(cache,lambda value:validate(value,evidence),create)
     print(('키워드' if keyword else company['name'] if company else repo.sector.name+' 산업')+' 인사이트 생성·검증 완료',flush=True)
     rendered=[]
     by_id={e['id']:e for e in evidence};by_row={'t'+str(i):r for i,r in enumerate(rows,1)}
@@ -166,7 +195,7 @@ def generate(scope,report,repo,company=None,force=False,keyword=None):
                 citations[ref]['evidence_score']=assessment['score']
                 citations[ref]['selection_version']=selection.VERSION
         rendered.append(dict(text=sentence['text'].strip(),source_refs=list(dict.fromkeys(source_refs))))
-    return dict(sentences=rendered,method='AI 생성 · 문장별 공시 근거 검증',prompt_version=prompts.VERSION,
+    return dict(sentences=rendered,method='AI 생성 · '+('근거 사실 정리 · ' if two_stage else '')+'문장별 공시 근거 검증',prompt_version=prompts.VERSION,
         selection_version=selection.VERSION,insufficient_reason=result['report'].get('insufficient_reason',''))
 
 
@@ -215,15 +244,16 @@ def build(sector_id=None,use_llm=False,force=False,codes=None,years=None):
         from dart_remote.generation import generate_all
         generate_all(report,repo,generate,force)
     if Repository(repo.sector.id).fingerprint()!=repo.fingerprint():raise ValueError('생성 중 데이터 버전이 바뀌었습니다. 다시 생성하세요.')
-    from dart_remote.artifacts import put_artifact
-    put_artifact(repo.sector.id,'report',report)
+    from dart_remote.artifacts import publish_report
+    import os
+    report=publish_report(repo.sector.id,report,os.getenv('LLM_PROMPT_VERSION','new') if use_llm else None)
     print(f'{repo.sector.name}: 기업 {len(companies)}개, 공시 {sum(c["report_count"] for c in companies)}개, DB 보고서 생성 완료',flush=True)
     return report
 
 def load_report(sector_id=None):
-    from dart_remote.artifacts import get_artifact
-    repo=Repository(sector_id);report=get_artifact(repo.sector.id,'report')
-    if report is None:raise RuntimeError('보고서가 없습니다. python -m snapdart.analyze --llm 으로 먼저 생성하세요.')
+    from dart_remote.artifacts import selected_report,report_version
+    repo=Repository(sector_id);report=selected_report(repo.sector.id)
+    if report is None:raise RuntimeError(f'{report_version()} 버전의 성공한 보고서가 없습니다. 해당 버전으로 분석을 먼저 실행하세요.')
     if report.get('source',{}).get('dataset_sha256')!=repo.fingerprint():
         raise RuntimeError('DB 데이터 버전이 바뀌었습니다. python -m snapdart.analyze --llm 으로 다시 생성하세요. 기존 AI 분석은 자동으로 발췌 보고서로 덮어쓰지 않습니다.')
     from dart_remote.wordcloud import apply as apply_wordcloud

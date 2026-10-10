@@ -1,9 +1,15 @@
 """Source resolution from immutable remote MySQL chunks and financial rows."""
 from .repository import Repository,ACCOUNTS
 from . import db
+import re
 
 def source_excerpt(ref,sector_id,load_report):
-    repo=Repository(sector_id);citation=load_report(repo.sector.id).get('citations',{}).get(ref)
+    repo=Repository(sector_id);report=load_report(repo.sector.id);citation=report.get('citations',{}).get(ref)
+    if not citation and re.fullmatch(r'retry-[0-9a-f]{64}',ref):
+        from . import artifacts
+        saved=artifacts.get_artifact(repo.sector.id,'keyword-source',ref)
+        if saved and saved.get('fingerprint')==report.get('source',{}).get('dataset_sha256') and saved.get('prompt_version')==artifacts.report_version():
+            citation=saved['citation']
     if not citation:raise KeyError('등록되지 않은 출처입니다.')
     if citation.get('source_kind')=='financial':
         f=repo.financial(citation['code'],citation['year'],citation.get('report_type','FY'),citation.get('basis') or 'CFS')

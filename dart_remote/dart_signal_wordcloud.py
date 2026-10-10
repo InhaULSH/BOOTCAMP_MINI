@@ -1,14 +1,17 @@
 """Build a KRX-sector disclosure word cloud from searchable report chunks.
 
 Extract and normalize chunk-level concepts, filter candidates, score the
-three-year signals, then return final-score Top-N. Final score is
+three-year signals, then return final-score Top-N. Spread combines 60% company
+coverage with 40% normalized company mention entropy. Final score is
 0.50*Current + 0.30*Change + 0.20*Spread, less
 min(15, max(0, (max_company_share - 0.50)*30)) and 2 for general-business
-keywords. Sector vocabulary comes from ``signal_keyword_rules.py``.
+keywords. At most three rising Top-N keywords are marked hot. Sector
+vocabulary comes from ``signal_keyword_rules.py``.
 """
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import unicodedata
 from collections import Counter, defaultdict
@@ -17,16 +20,20 @@ from typing import Iterable
 
 import pandas as pd
 
-from .db import rows as _query_rows
+from . import db
 
 def query(sql, params=None):
-    """Use the pooled read-only service connection, including SQL_* aliases."""
     values=list(params or [])
     for i in range(len(values)):sql=sql.replace("%s",":p"+str(i),1)
-    return pd.DataFrame(_query_rows(sql,{"p"+str(i):v for i,v in enumerate(values)}))
+    return pd.DataFrame(db.rows(sql,{"p"+str(i):v for i,v in enumerate(values)}))
 
+def interval_weights(years):
+    intervals=list(zip(years,years[1:]))
+    return [(a,b,0.4+0.2*i/max(1,len(intervals)-1)) for i,(a,b) in enumerate(intervals)]
 from .signal_keyword_rules import (
-    ALLOWED_SECTION_PREFIXES, ALLOWED_SUBSECTION_PHRASES,
+    ABSTRACT_HEADS, ABSTRACT_MODIFIERS, ACCOUNTING_LABEL_HEADS,
+    ACCOUNTING_LABEL_MODIFIERS, ALLOWED_SECTION_PREFIXES, ALLOWED_SUBSECTION_PHRASES,
+    DOCUMENT_FIELD_HEADS, DOCUMENT_FIELD_MODIFIERS,
     GENERIC_NOISE_PATTERNS, GENERIC_VOCABULARY, LOW_INFORMATION_PHRASE_TERMS,
     MEASUREMENT_OR_TABLE_TOKENS, PRODUCTION_GENERIC_NOISE_CATEGORIES, SECTOR_VOCABULARIES,
     STOPWORDS, SectorVocabulary,
@@ -46,10 +53,13 @@ CURRENT_WEIGHT = 0.50
 CHANGE_WEIGHT = 0.30
 SPREAD_WEIGHT = 0.20
 HOT_SCORE_THRESHOLD = 90.0
+MAX_INDUSTRY_HOT_KEYWORDS = 3
 GENERIC_BUSINESS_PENALTY = 2
 CONCENTRATION_FREE_SHARE = 0.50
 CONCENTRATION_SLOPE = 30.0
 MAX_CONCENTRATION_PENALTY = 15.0
+COVERAGE_SPREAD_WEIGHT = 0.60
+ENTROPY_SPREAD_WEIGHT = 0.40
 
 
 @dataclass(frozen=True)
@@ -65,9 +75,6 @@ class SignalConfig:
     tokenizer_batch_size: int = 128
     extra_stopwords: frozenset[str] = field(default_factory=frozenset)
     vocabulary: SectorVocabulary | None = None
-    # Company pages have no cross-company diffusion or concentration penalty.
-    min_latest_companies: int = MIN_LATEST_COMPANIES
-    company_scope: bool = False
 
     def __post_init__(self) -> None:
         if not self.years or tuple(sorted(set(self.years))) != self.years:
@@ -111,8 +118,7 @@ def _analysis_where(config: SignalConfig, companies: pd.DataFrame) -> tuple[str,
     subsection_marks = " OR ".join(["subsection_name LIKE %s"] * len(ALLOWED_SUBSECTION_PHRASES))
     where = (
         f"corp_code IN ({code_marks}) AND year IN ({year_marks}) "
-        f"AND report_type IN ({type_marks}) AND is_active = 1 AND is_searchable = 1 "
-        "AND data_version = (SELECT data_version FROM data_versions WHERE is_current=1 AND validated=1) "
+        f"AND report_type IN ({type_marks}) AND is_active = 1 AND is_searchable = 1 AND data_version IN (SELECT data_version FROM data_versions WHERE is_current=1 AND validated=1) "
         f"AND (({section_marks}) OR ({subsection_marks}))"
     )
     params: list[object] = [
@@ -123,9 +129,51 @@ def _analysis_where(config: SignalConfig, companies: pd.DataFrame) -> tuple[str,
     return where, params
 
 
+def calculate_entropy_score(
+    keyword_company_counts: dict[str, int],
+    company_chunk_totals: dict[str, int],
+) -> float:
+    """Return 0--100 normalized entropy of corpus-adjusted company mentions."""
+    company_count = len(company_chunk_totals)
+    if company_count <= 1:
+        return 0.0
+    mention_rates = [
+        keyword_company_counts.get(code, 0) / total if total > 0 else 0.0
+        for code, total in company_chunk_totals.items()
+    ]
+    rate_sum = sum(mention_rates)
+    if rate_sum <= 0:
+        return 0.0
+    shares = [rate / rate_sum for rate in mention_rates]
+    entropy = -sum(share * math.log(share) for share in shares if share > 0)
+    normalized = entropy / math.log(company_count)
+    return min(100.0, max(0.0, normalized * 100.0))
+
+
+def apply_industry_hot_flags(result: pd.DataFrame, top_n: int) -> pd.DataFrame:
+    """Mark at most three strongest rising keywords inside final Top-N."""
+    result = result.copy()
+    result["is_hot"] = False
+    if result.empty or top_n < 1:
+        return result
+    eligible = result.loc[
+        (result["final_rank"] <= top_n)
+        & (result["change_score"] >= HOT_SCORE_THRESHOLD)
+        & (result["change_raw"] > 0)
+    ].sort_values(
+        ["change_raw", "change_score", "final_signal_score", "final_rank", "keyword"],
+        ascending=[False, False, False, True, True],
+        kind="mergesort",
+    )
+    hot_indices = eligible.head(MAX_INDUSTRY_HOT_KEYWORDS).index
+    result.loc[hot_indices, "is_hot"] = True
+    return result
+
+
 def _result_from_counts(
     counts: dict[str, dict[int, int]],
     latest_company_counts: dict[str, dict[str, int]],
+    latest_company_chunk_totals: dict[str, int],
     totals: pd.Series,
     config: SignalConfig,
     company_total: int,
@@ -142,20 +190,28 @@ def _result_from_counts(
     latest = config.years[-1]
     result = result[result[f"count_{latest}"] >= config.min_latest_chunk_count].copy()
     result["current_raw"] = result[f"rate_{latest}"]
-    # Retain 0.4/0.6 for three years; include every interval for longer histories.
-    intervals=list(zip(config.years,config.years[1:]))
-    weights=[EARLIER_CHANGE_WEIGHT+(RECENT_CHANGE_WEIGHT-EARLIER_CHANGE_WEIGHT)*i/max(1,len(intervals)-1)
-             for i in range(len(intervals))]
-    total=sum(weights)
-    result["change_raw"] = sum(w/total*(result[f"rate_{b}"]-result[f"rate_{a}"])
-                               for (a,b),w in zip(intervals,weights)) if intervals else 0.0
+    intervals=[(a,b,w) for a,b,w in interval_weights(config.years) if b==a+1 and totals[a]>0 and totals[b]>0]
+    weight=sum(w for a,b,w in intervals)
+    result["change_raw"] = sum(w/weight*(result[f"rate_{b}"]-result[f"rate_{a}"]) for a,b,w in intervals) if intervals else 0.0
     result["company_count"] = result["keyword"].map(lambda word: len(latest_company_counts.get(word, {})))
-    result = result[result["company_count"] >= config.min_latest_companies].copy()
+    result = result[result["company_count"] >= MIN_LATEST_COMPANIES].copy()
     excluded_noise = result["keyword"].map(
         lambda keyword: bool(PRODUCTION_GENERIC_NOISE_CATEGORIES.intersection(generic_noise_categories(keyword)))
     )
     result = result.loc[~excluded_noise].copy()
-    result["spread_score"] = result["company_count"] / company_total * 100.0
+    result["company_coverage_score"] = result["company_count"] / company_total * 100.0
+    # Keep the former score for operational comparisons. Production scoring
+    # uses the coverage/entropy combination below.
+    result["old_spread_score"] = result["company_coverage_score"]
+    result["entropy_score"] = result["keyword"].map(
+        lambda word: calculate_entropy_score(
+            latest_company_counts.get(word, {}), latest_company_chunk_totals
+        )
+    )
+    result["spread_score"] = (
+        COVERAGE_SPREAD_WEIGHT * result["company_coverage_score"]
+        + ENTROPY_SPREAD_WEIGHT * result["entropy_score"]
+    )
     result["current_score"] = _percentile_score(result["current_raw"])
     result["change_score"] = _percentile_score(result["change_raw"])
     result["signal_score"] = (
@@ -163,7 +219,6 @@ def _result_from_counts(
         + CHANGE_WEIGHT * result["change_score"]
         + SPREAD_WEIGHT * result["spread_score"]
     )
-    result["is_hot"] = (result["change_score"] >= HOT_SCORE_THRESHOLD) & (result["change_raw"] > 0)
     # A concrete phrase takes precedence over a context-free component when
     # the sector vocabulary marks that component as requiring context.
     phrases = result.loc[result["keyword"].str.contains(" ", regex=False), "keyword"]
@@ -179,7 +234,7 @@ def _result_from_counts(
     result["max_company_share"] = result["keyword"].map(
         lambda word: max(latest_company_counts.get(word, {}).values(), default=0)
     ) / result[f"count_{latest}"]
-    result["concentration_penalty"] = 0.0 if config.company_scope else result["max_company_share"].map(calculate_concentration_penalty)
+    result["concentration_penalty"] = result["max_company_share"].map(calculate_concentration_penalty)
     result["generic_business"] = result["keyword"].map(is_generic_business)
     result["generic_business_penalty"] = result["generic_business"].astype(int) * GENERIC_BUSINESS_PENALTY
     result["final_signal_score"] = (
@@ -187,7 +242,7 @@ def _result_from_counts(
     )
     result = result.sort_values(["final_signal_score", "keyword"], ascending=[False, True]).reset_index(drop=True)
     result["final_rank"] = result.index + 1
-    return result
+    return apply_industry_hot_flags(result, config.top_n)
 
 
 def score_database_keywords(config: SignalConfig, companies: pd.DataFrame,
@@ -202,9 +257,19 @@ def score_database_keywords(config: SignalConfig, companies: pd.DataFrame,
         raise ValueError(f"No searchable chunks available for year(s): {list(totals[totals == 0].index)}")
 
     extractor = KeywordExtractor(companies["corp_name"], config.extra_stopwords, config.vocabulary)
+    latest_year = config.years[-1]
+    latest_company_frame = query(
+        "SELECT corp_code, COUNT(*) AS total_chunks FROM chunk_metadata "
+        f"WHERE {where} AND year = %s GROUP BY corp_code",
+        [*params, latest_year],
+    )
+    latest_company_chunk_totals = {str(code): 0 for code in companies["corp_code"]}
+    latest_company_chunk_totals.update({
+        str(row.corp_code): int(row.total_chunks)
+        for row in latest_company_frame.itertuples(index=False)
+    })
     counts: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
     latest_company_counts: dict[str, Counter[str]] = defaultdict(Counter)
-    latest_year = config.years[-1]
     last_vector_id = -1
     while True:
         page = query(
@@ -220,9 +285,12 @@ def score_database_keywords(config: SignalConfig, companies: pd.DataFrame,
             for keyword in keywords:
                 counts[keyword][int(row.year)] += 1
                 if row.year == latest_year:
-                    latest_company_counts[keyword][row.corp_code] += 1
+                    latest_company_counts[keyword][str(row.corp_code)] += 1
         last_vector_id = int(page["vector_id"].iloc[-1])
-    return _result_from_counts(counts, latest_company_counts, totals, config, len(companies))
+    return _result_from_counts(
+        counts, latest_company_counts, latest_company_chunk_totals,
+        totals, config, len(companies),
+    )
 
 
 def _canonical(value: str, vocabulary: SectorVocabulary = GENERIC_VOCABULARY) -> str:
@@ -238,11 +306,57 @@ def _is_candidate(value: str, stopwords: set[str], company_names: set[str],
         return False
     if re.fullmatch(r"[\d.,%/()\-]+", canonical):
         return False
+    if re.fullmatch(r"(?:°\s*)?[CFK]|℃|℉", canonical, flags=re.IGNORECASE):
+        return False
     # One-character Korean fragments and unit-like tokens are not useful, while
     # short Latin acronyms are retained.
     if len(canonical) < 2 and not re.fullmatch(r"[A-Za-z]{2,}", canonical):
         return False
     return True
+
+
+def _is_sector_protected(value: str, vocabulary: SectorVocabulary) -> bool:
+    """Whether a candidate is explicitly supported by the injected sector config."""
+    canonical = _canonical(value, vocabulary)
+    protected = (
+        set(vocabulary.industry_anchors)
+        | set(vocabulary.single_nouns)
+        | {_canonical(term, vocabulary) for term in vocabulary.compound_patterns.values()}
+        | {_canonical(term, vocabulary) for _, term in vocabulary.technology_patterns}
+    )
+    return canonical in protected
+
+
+def _looks_like_structural_field(
+    text: str, start: int, end: int, phrase: str, vocabulary: SectorVocabulary,
+) -> bool:
+    """Identify a short table/header field without rejecting protected concepts."""
+    if _is_sector_protected(phrase, vocabulary):
+        return False
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    if line_end < 0:
+        line_end = len(text)
+    line = re.sub(r"\s+", " ", text[line_start:line_end]).strip()
+    surface = re.sub(r"\s+", " ", text[start:end]).strip()
+    compact_line = re.sub(r"[^0-9A-Za-z가-힣]", "", line).casefold()
+    compact_surface = re.sub(r"[^0-9A-Za-z가-힣]", "", surface).casefold()
+    if compact_line == compact_surface and len(line) <= 40:
+        previous_start = text.rfind("\n", 0, max(0, line_start - 1)) + 1
+        previous = text[previous_start:max(0, line_start - 1)].strip()
+        next_end = text.find("\n", line_end + 1)
+        if next_end < 0:
+            next_end = len(text)
+        following = text[line_end + 1:next_end].strip()
+        short_neighbours = sum(bool(value) and len(value) <= 60 for value in (previous, following))
+        if short_neighbours == 2:
+            return True
+    tail = text[end:line_end]
+    if len(line) <= 80 and re.match(
+        r"^\s*[:：]\s*(?:[-–—]|\d|\(?단위|백만|천|원|USD|KRW)", tail, flags=re.IGNORECASE
+    ):
+        return True
+    return False
 
 
 def _is_informative_phrase(phrase: str,
@@ -257,6 +371,13 @@ def _is_informative_phrase(phrase: str,
         return False
     if (lowered & vocabulary.excluded_theme_terms) and not (set(terms) & vocabulary.industry_anchors):
         return False
+    if len(terms) == 2:
+        left, right = terms
+        if ((left in DOCUMENT_FIELD_MODIFIERS and right in DOCUMENT_FIELD_HEADS)
+                or (left in ACCOUNTING_LABEL_MODIFIERS and right in ACCOUNTING_LABEL_HEADS)
+                or (left in ABSTRACT_MODIFIERS and right in ABSTRACT_HEADS)
+                or (left in vocabulary.broad_sector_terms and right == "산업")):
+            return False
     # Generic action/status words at either end describe document boilerplate,
     # not a technology/product/capacity concept.  This catches classes such as
     # "개발 완료", "규모 투자", and "경쟁력 확보" without banning "설비 투자"
@@ -286,44 +407,61 @@ class KeywordExtractor:
     def extract_many(self, texts: Iterable[str]) -> list[set[str]]:
         """Extract one deduplicated keyword set per chunk in a Kiwi batch."""
         found_per_chunk: list[set[str]] = []
+        source_texts: list[str] = []
         masked_texts: list[str] = []
         for text in texts:
             found: set[str] = set()
-            masked = unicodedata.normalize("NFKC", text)
+            source = unicodedata.normalize("NFKC", text)
+            masked = source
             for pattern, keyword in self.vocabulary.compound_patterns.items():
                 if re.search(pattern, masked, flags=re.IGNORECASE):
                     found.add(_canonical(keyword, self.vocabulary))
-                masked = re.sub(pattern, " ", masked, flags=re.IGNORECASE)
+                masked = re.sub(
+                    pattern, lambda match: " " * len(match.group(0)), masked, flags=re.IGNORECASE
+                )
             # Preserve configured technology tokens before Kiwi can split mixed
             # letter/digit strings; normalization remains sector-configured.
             for pattern, keyword in self.vocabulary.technology_patterns:
                 if re.search(pattern, masked, flags=re.IGNORECASE):
                     found.add(_canonical(keyword, self.vocabulary))
             found_per_chunk.append(found)
+            source_texts.append(source)
             masked_texts.append(masked)
 
-        for found, tokens in zip(found_per_chunk, self.kiwi.tokenize(masked_texts)):
+        for found, source, masked, tokens in zip(
+            found_per_chunk, source_texts, masked_texts, self.kiwi.tokenize(masked_texts)
+        ):
             nouns: list[tuple[str, int, int]] = []
             for token in tokens:
                 if token.tag in NOUN_TAGS:
                     word = _canonical(token.form, self.vocabulary)
                     if _is_candidate(word, self.stopwords, self.company_names, self.vocabulary):
                         nouns.append((word, token.start, token.len))
-                        if token.tag == "SL" and word.isupper():
+                        if (token.tag == "SL" and word.isupper()
+                                and (len(word) >= 4 or _is_sector_protected(word, self.vocabulary))):
                             found.add(word)
                         elif word in self.vocabulary.single_nouns:
                             found.add(word)
             # Join only neighbouring noun tokens.  This avoids accidental
             # pairs formed from nouns that happened to be far apart in a chunk.
-            for (left, start, length), (right, next_start, _) in zip(nouns, nouns[1:]):
-                phrase = f"{left} {right}"
+            for (left, start, length), (right, next_start, right_length) in zip(nouns, nouns[1:]):
+                phrase = _canonical(f"{left} {right}", self.vocabulary)
+                # A newline, punctuation, or table-cell separator is not a
+                # noun-phrase boundary, even when the two tokens are adjacent.
+                gap = masked[start + length:next_start]
                 if (left != right and re.search(r"[가-힣]", phrase)
-                        and next_start <= start + length + 1 and _is_candidate(
+                        and gap in ("", " ") and _is_candidate(
                     phrase, self.stopwords, self.company_names, self.vocabulary
-                ) and _is_informative_phrase(phrase, self.vocabulary)):
+                ) and _is_informative_phrase(phrase, self.vocabulary)
+                        and not _looks_like_structural_field(
+                            source, start, next_start + right_length, phrase, self.vocabulary
+                        )):
                     found.add(phrase)
         return [
-            {word for word in found if _is_candidate(word, self.stopwords, self.company_names, self.vocabulary)}
+            {
+                _canonical(word, self.vocabulary) for word in found
+                if _is_candidate(word, self.stopwords, self.company_names, self.vocabulary)
+            }
             for found in found_per_chunk
         ]
 
@@ -369,8 +507,18 @@ def score_keywords(chunks: pd.DataFrame, config: SignalConfig, companies: pd.Dat
     for (word, code), count in hit[hit["year"] == latest].groupby(
         ["keyword", "corp_code"]
     )["chunk_id"].nunique().items():
-        latest_company_counts[word][code] = int(count)
-    return _result_from_counts(counts, latest_company_counts, totals, config, len(companies))
+        latest_company_counts[word][str(code)] = int(count)
+    latest_company_chunk_totals = {
+        str(code): int(count)
+        for code, count in chunks.loc[chunks["year"] == latest]
+        .groupby("corp_code")["chunk_id"].nunique().items()
+    }
+    for code in companies["corp_code"]:
+        latest_company_chunk_totals.setdefault(str(code), 0)
+    return _result_from_counts(
+        counts, latest_company_counts, latest_company_chunk_totals,
+        totals, config, len(companies),
+    )
 
 
 def build_sector_signal(config: SignalConfig) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -510,7 +658,7 @@ def main() -> None:
     """Run the production word cloud and optionally inspect one keyword."""
     parser = argparse.ArgumentParser(description="Score KRX disclosure keyword signals")
     parser.add_argument("index_code", help="KRX index code, e.g. KRX_SEMI")
-    parser.add_argument("--years", nargs='+', type=int, help='생략 시 현재 MySQL 섹터의 전체 연도')
+    parser.add_argument("--years", nargs="+", type=int, help="생략 시 현재 DB 전체 연도")
     parser.add_argument("--top-n", type=int, default=DEFAULT_WORDCLOUD_TOP_N)
     parser.add_argument("--top-companies", type=int, default=DEFAULT_TOP_COMPANIES)
     parser.add_argument("--keyword", help="inspect an exact normalized keyword and its company chunk counts")
@@ -526,7 +674,8 @@ def main() -> None:
     print(f"\nTop {config.top_n} disclosure keywords:")
     columns = [
         "final_rank", "keyword", f"count_{config.years[-1]}", "company_count", "current_score",
-        "change_score", "spread_score", "signal_score", "max_company_share",
+        "change_score", "old_spread_score", "company_coverage_score", "entropy_score",
+        "spread_score", "signal_score", "max_company_share",
         "concentration_penalty", "generic_business", "generic_business_penalty",
         "final_signal_score", "display_weight", "is_hot",
     ]

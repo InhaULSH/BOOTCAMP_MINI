@@ -28,7 +28,7 @@ if __name__ == '__main__':
     parser.add_argument('--sector',help='MySQL 섹터 이름 또는 지수 코드; 생략 시 모든 섹터')
     parser.add_argument('--companies',nargs='+',help='종목코드 또는 기업명; 생략 시 해당 섹터 전체')
     parser.add_argument('--years',nargs='+',type=int,help='생략 시 DB에 적재된 전체 연도')
-    parser.add_argument('--prompt-version',choices=['new','old'],default='new',help='프롬프트 및 근거 평가 버전')
+    parser.add_argument('--prompt-version',choices=['new','new2','old'],default='new',help='new: 기존 단일 생성, new2: 근거 정리 후 작성, old: 이전 프롬프트')
     args = parser.parse_args()
     import os
     os.environ['LLM_PROMPT_VERSION']=args.prompt_version

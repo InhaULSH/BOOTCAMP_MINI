@@ -8,3 +8,5 @@ body{font-family:BIGIN,Arial,'Malgun Gothic',sans-serif}.site-header{max-width:1
 h1{word-break:keep-all}@media(max-width:750px){h1{font-size:32px;line-height:1.45}}
 
 .legend-item[aria-pressed="true"]{background:#e0eee5;color:#266c50;font-weight:700;box-shadow:inset 0 0 0 1px #9ac7ae}
+
+.keyword-actions{margin-top:18px;padding-top:14px;border-top:1px solid #e4ebe7}.keyword-actions>p{font-size:13px;line-height:1.7;color:#637d6c}.keyword-actions>button{font:inherit;font-size:13px;padding:8px 12px;margin:0 8px 8px 0;border:1px solid #b9d4c5;border-radius:8px;background:#edf5ef;color:#266c50;cursor:pointer}.keyword-actions>button:disabled{opacity:.5;cursor:wait}.keyword-filing{display:flex;flex-direction:column;gap:5px;margin-top:9px;padding:11px 13px;border:1px solid #e4ebe7;border-radius:8px;color:#266c50;text-decoration:none}.keyword-filing span{font-size:12px;color:#637d6c}.keyword-filing:hover,.keyword-filing:focus-visible{background:#edf5ef}

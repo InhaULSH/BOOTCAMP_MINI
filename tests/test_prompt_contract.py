@@ -54,7 +54,8 @@ class PromptContractTests(unittest.TestCase):
             {'text': '산업 공통 흐름을 판단할 근거는 충분하지 않습니다.', 'refs': ['t1']},
         ])
         self.assertEqual(len(result['sentences']), 2)
-        self.assertEqual(captured['instruction'], prompts.COMMON+'\n'+prompts.INSIGHT+'\n'+pipeline.selection.INSTRUCTION)
+        from dart_remote.response_validation import OUTPUT_NOTE
+        self.assertEqual(captured['instruction'], prompts.COMMON+'\n'+prompts.INSIGHT+'\n'+pipeline.selection.INSTRUCTION+'\n'+OUTPUT_NOTE)
         self.assertEqual(captured['temperature'], 1.0)
         self.assertEqual(captured['max_output_tokens'], 8192)
 
@@ -71,9 +72,9 @@ class PromptContractTests(unittest.TestCase):
             self.generate([{'text': '사업 변화입니다.', 'refs': ['missing']},
                 {'text': '자료의 한계입니다.', 'refs': ['t1']}])
 
-    def test_single_chunk_can_generate_single_industry_sentence(self):
-        result,captured=self.generate([dict(text='공시에서 생산능력 확대 계획을 확인할 수 있습니다.',refs=['t1'])],filing_count=1)
-        self.assertEqual(len(result['sentences']),1)
+    def test_single_chunk_can_support_two_industry_sentences(self):
+        result,captured=self.generate([dict(text='공시에서 생산능력 확대 계획을 확인할 수 있습니다.',refs=['t1']),dict(text='수요에 대응하는 설비 확충 계획입니다.',refs=['t1'])],filing_count=1)
+        self.assertEqual(len(result['sentences']),2)
         self.assertEqual(len(result['sentences'][0]['source_refs']),1)
         self.assertIn('최소 1개',captured['instruction'])
 
@@ -92,14 +93,14 @@ class PromptContractTests(unittest.TestCase):
         self.assertNotIn('keyword_statistics',prompts.context('반도체',[],[]))
 
     def test_keyword_generation_receives_calculated_signal_statistics(self):
-        _,captured=self.generate([dict(text='공시에 나타난 제품의 수요 변화입니다.',refs=['t1'])],filing_count=1,keyword='HBM')
+        _,captured=self.generate([dict(text='HBM은 대역폭을 높인 메모리 제품입니다.',refs=['t1']),dict(text='공시에 나타난 제품의 수요 변화입니다.',refs=['t1'])],filing_count=1,keyword='HBM')
         self.assertEqual(captured['context']['keyword_statistics']['count'],12)
         self.assertEqual(captured['context']['keyword_statistics']['change_raw'],0.02)
         self.assertNotIn('final_signal_score',captured['context']['keyword_statistics'])
 
     def test_view_never_replaces_ai_report_with_offline_excerpt(self):
         from types import SimpleNamespace
-        with patch('snapdart.data_access.pipeline.Repository',return_value=SimpleNamespace(sector=SimpleNamespace(id='test'),fingerprint=lambda:'new')),patch('dart_remote.artifacts.get_artifact',return_value=dict(source=dict(dataset_sha256='old'))),patch('snapdart.data_access.pipeline.build') as build:
+        with patch('snapdart.data_access.pipeline.Repository',return_value=SimpleNamespace(sector=SimpleNamespace(id='test'),fingerprint=lambda:'new')),patch('dart_remote.artifacts.selected_report',return_value=dict(source=dict(dataset_sha256='old'))),patch('snapdart.data_access.pipeline.build') as build:
             with self.assertRaisesRegex(RuntimeError,'다시 생성'):pipeline.load_report('test')
         build.assert_not_called()
 
@@ -131,10 +132,58 @@ class PromptContractTests(unittest.TestCase):
         self.assertEqual(result['sentences'],[])
         self.assertIn('부족',result['insufficient_reason'])
 
-    def test_company_prompt_has_no_invented_sentence_count(self):
-        result,captured=self.generate([{'text':'기업의 사업 현황입니다.','refs':['t1']}],company_scope=True)
-        self.assertEqual(len(result['sentences']),1)
+    def test_company_prompt_accepts_one_grounded_sentence(self):
+        single,captured=self.generate([{'text':'기업의 사업 현황입니다.','refs':['t1']}],company_scope=True)
+        self.assertEqual(len(single['sentences']),1)
+        self.assertIn('1-3문장',captured['instruction'])
+        result,captured=self.generate([{'text':'기업의 사업 현황입니다.','refs':['t1']},{'text':'생산능력 확대 계획을 공시했습니다.','refs':['t1']}],company_scope=True)
+        self.assertEqual(len(result['sentences']),2)
         self.assertEqual(captured['schema']['properties']['sentences']['maxItems'],3)
+
+    def test_industry_prompt_accepts_one_grounded_sentence(self):
+        result,captured=self.generate([{'text':'확인 가능한 범위에서 사업 현황을 설명합니다.','refs':['t1']}],filing_count=1)
+        self.assertEqual(len(result['sentences']),1)
+        array=captured['schema']['properties']['sentences']
+        self.assertEqual(array['anyOf'],[{'maxItems':0},{'minItems':1,'maxItems':3}])
+
+    def test_industry_rejects_four_sentences(self):
+        with self.assertRaisesRegex(ValueError,'실제 4개, 허용 1-3개'):
+            self.generate([{'text':'근거가 있는 설명입니다.','refs':['t1']} for _ in range(4)])
+
+    def test_keyword_accepts_one_or_two_grounded_sentences(self):
+        for count in (1,2):
+            result,captured=self.generate([dict(text='용어와 공시에서 확인한 사업 현황을 함께 설명합니다.',refs=['t1']) for _ in range(count)],keyword='HBM',filing_count=1)
+            self.assertEqual(len(result['sentences']),count)
+            self.assertEqual(captured['schema']['properties']['sentences']['anyOf'],[{'maxItems':0},{'minItems':1,'maxItems':2}])
+            self.assertIn('1-2문장',captured['context']['task'])
+
+    def test_keyword_rejects_three_sentences(self):
+        with self.assertRaisesRegex(ValueError,'실제 3개, 허용 1-2개'):
+            self.generate([dict(text='관련 사업 현황을 설명합니다.',refs=['t1']) for _ in range(3)],keyword='HBM')
+
+    def test_old_prompt_preserves_single_sentence(self):
+        import os
+        from snapdart.data_access import prompts_old
+        with patch.dict(os.environ,{'LLM_PROMPT_VERSION':'old'}):
+            result,_=self.generate([dict(text='공시에서 생산 확대 계획을 확인합니다.',refs=['t1'])],company_scope=True)
+        self.assertEqual(len(result['sentences']),1)
+        self.assertEqual(result['prompt_version'],prompts_old.VERSION)
+
+    def test_current_definition_and_deploy_match(self):
+        import runpy
+        root=Path(__file__).resolve().parents[1]
+        deployed=runpy.run_path(str(root/'deploy/cloudapp/prompts.py'))
+        definition=(root/'docs/4차구상/프롬프트_정의서_수정.txt').read_text(encoding='utf-8-sig')
+        for key in ('COMMON','INSIGHT','COMPANY','KEYWORD'):
+            self.assertEqual(getattr(prompts,key),deployed[key])
+            original=getattr(prompts,key)
+            # The user's newer instruction explicitly permits one grounded insight sentence.
+            original=original.replace('적격 근거로 뒷받침되는 내용만 1-3문장으로 작성하세요. 1문장으로 충분하면 추가하지 마세요.','2-3문장으로 작성하세요.')
+            original=original.replace('적격 근거가 있는 1-3문장의 짧은 한 문단으로 핵심 현황이나 변화를 먼저 설명하세요. 1문장으로 충분하면 추가하지 마세요.','2-3문장의 짧은 한 문단으로 핵심 현황이나 변화를 먼저 설명하세요.')
+            original=original.replace('용어 해설과 공시에서 확인한 내용을 합쳐 1-2문장으로 작성하세요.','용어 해설과 공시에서 확인한 내용을 합쳐 2문장으로 작성하세요.')
+            original=original.replace('한 문장이면 용어의 뜻과 확인된 사업 현황이나 동향을 자연스럽게 함께 설명하세요. 두 문장이 이해하기 쉬우면 첫 문장은 용어의 뜻, 두 번째 문장은 확인된 사업 현황이나 동향을 설명하세요.','첫 문장은 용어의 뜻을, 두 번째 문장은 확인된 사업 현황이나 동향을 설명하세요.')
+            original=original.replace('각 문장을 적격 공시 근거로 뒷받침하세요. 한 문장으로 충분하면 추가하지 마세요. 용어와 관련 사업 현황을 설명할 적격 근거가 없으면 sentences=[]와 insufficient_reason을 반환하세요.','각 문장을 적격 공시 근거로 뒷받침하세요. 2문장을 만들 근거가 부족하면 sentences=[]와 insufficient_reason을 반환하세요.')
+            self.assertIn(original,definition)
 
     def test_money_sign_and_arbitrary_amount_are_rejected(self):
         for text in ('영업이익은 1,234원입니다.','영업이익은 -1,200원입니다.'):

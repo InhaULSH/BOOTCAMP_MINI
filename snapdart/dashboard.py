@@ -2,6 +2,7 @@
 import copy
 import json
 import math
+from dart_remote.runtime_cache import request_scope
 from snapdart.data_access.pipeline import growth
 
 METRICS = [('revenue_growth', '매출 성장률'), ('margin', '영업이익률'),
@@ -79,6 +80,7 @@ def build_view(report, market=None):
     return data
 
 
+@request_scope
 def load_view(sector_id=None):
     from snapdart.data_access.pipeline import load_report
     from snapdart.data_access.catalog import SERVICE,sectors
