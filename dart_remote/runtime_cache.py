@@ -67,7 +67,7 @@ def cached_graph(loader,sector,company,years):
         stat=path.stat();stamp=(stat.st_mtime_ns,stat.st_ctime_ns,stat.st_size,stat.st_ino)
     except FileNotFoundError:return loader()
     target=hashlib.sha256(repr(sorted((k,v) for k,v in os.environ.items() if k.startswith('MYSQL_'))).encode()).hexdigest()
-    key=(str(artifacts.ROOT),target,repr(sector),json.dumps(company,sort_keys=True,ensure_ascii=False),tuple(years),'graph-v4-capex-proof')
+    key=(str(artifacts.ROOT),target,repr(sector),json.dumps(company,sort_keys=True,ensure_ascii=False),tuple(years),'graph-v6-quarter-basis')
     return _graph_cache.get(key,stamp,loader,ttl=ttl,size=lambda value:len(json.dumps(value,ensure_ascii=False).encode()))
 
 def cached_project(function,selected,catalogue,company=None):
@@ -106,6 +106,8 @@ def scoped_catalog(key,stamp,loader):
 
 def sql_value(key,loader):
     """Reuse identical small SQL results within one request, never across requests."""
+    from .analysis_validation import active
+    if active():return loader()  # Never hide mid-build metadata changes.
     values=_scope.get()
     if values is None:return loader()
     slot=('sql',key)

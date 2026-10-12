@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import time
 import uuid
@@ -91,7 +92,7 @@ def report_version():
 def identify_report(report):
     if not report:return None
     explicit=report.get('report_prompt_version')
-    if explicit in ('new','new2','old'):return explicit
+    if explicit is not None:return explicit if explicit in ('new','new2','old') else None
     versions={insight.get('prompt_version') for scope in [report]+report.get('companies',[])
               for insight in list(scope.get('ai_insights',{}).values())+
               [item for entries in scope.get('keyword_insights',{}).values() for item in entries.values()]
@@ -99,7 +100,10 @@ def identify_report(report):
     profiles=set()
     for version in versions:
         if version.startswith('bigin-user-'):
-            profiles.add('new2' if '-new2-' in version else 'new')
+            variant=re.search(r'-(new[0-9]*)-',version)
+            profile=variant.group(1) if variant else 'new'
+            if profile not in ('new','new2'):return None
+            profiles.add(profile)
         elif version.startswith('bigin-pdf-'):profiles.add('old')
         else:return None
     return next(iter(profiles)) if len(profiles)==1 else None

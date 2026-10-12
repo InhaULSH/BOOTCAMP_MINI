@@ -4,8 +4,77 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="68170197-59dd-4bd8-a3f0-8de386bb6c92" name="변경" comment="최종 구상 사항 반영(2차)">
+    <list default="true" id="68170197-59dd-4bd8-a3f0-8de386bb6c92" name="변경" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/README_WORDCLOUD.md" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/README_WORDCLOUD.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/artifacts.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/artifacts.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/asset_versions.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/asset_versions.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/capex_validation.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/capex_validation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/catalog.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/catalog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/citation_selection.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/citation_selection.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/dart_company_signal_wordcloud.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/dart_company_signal_wordcloud.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/dart_signal_wordcloud.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/dart_signal_wordcloud.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/generation.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/generation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/graph_metrics.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/graph_metrics.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/insight_plan.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/mysql_vectors.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/mysql_vectors.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/original_document.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/original_document.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/receipt_validation.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/receipt_validation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/repository.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/runtime_cache.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/runtime_cache.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/signal_keyword_rules.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/signal_keyword_rules.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/sources.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/sources.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/test_company_context_diversity.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/test_company_context_diversity.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/test_company_signal_wordcloud.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/test_company_signal_wordcloud.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/test_industry_spread_hot.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/test_industry_spread_hot.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/test_signal_sector_isolation.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/test_signal_sector_isolation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/wordcloud.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/wordcloud.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dart_remote/xml_financials.py" beforeDir="false" afterPath="$PROJECT_DIR$/dart_remote/xml_financials.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/01_서비스구조와데이터조회.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/01_서비스구조와데이터조회.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/02_공시검색과벡터검증.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/02_공시검색과벡터검증.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/03_인사이트생성과프롬프트.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/03_인사이트생성과프롬프트.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/04_공시신호워드클라우드.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/04_공시신호워드클라우드.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/05_재무지표와원문출처.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/05_재무지표와원문출처.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/06_시세수집과화면.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/06_시세수집과화면.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/07_실행배포와점검.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/07_실행배포와점검.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/08_XML기반오프라인통합검증.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/08_XML기반오프라인통합검증.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/dart_company_signal_wordcloud.py" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/dart_company_signal_wordcloud.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/dart_signal_wordcloud.py" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/dart_signal_wordcloud.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/signal_keyword_rules.py" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/signal_keyword_rules.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/test_company_context_diversity.py" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/test_company_context_diversity.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/test_company_signal_wordcloud.py" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/test_company_signal_wordcloud.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/test_industry_spread_hot.py" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/test_industry_spread_hot.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/test_signal_sector_isolation.py" beforeDir="false" afterPath="$PROJECT_DIR$/docs/4차구상/dart_signal_wordcloud/test_signal_sector_isolation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/4차구상/프롬프트_정의서_수정.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/analyze.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/analyze.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/data_access/pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/data_access/pipeline.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/data_access/prompts_new2.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/data_access/prompts_new2.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/snapdart/ui_project.py" beforeDir="false" afterPath="$PROJECT_DIR$/snapdart/ui_project.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_asset_versions.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_asset_versions.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_capex_validation.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_capex_validation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_deploy_parity.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_deploy_parity.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_generation_concurrency.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_generation_concurrency.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_llm_diagnostics.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_llm_diagnostics.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_new2_insights.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_new2_insights.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_prompt_contract.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_prompt_contract.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_receipt_validation.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_receipt_validation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_storyboard_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_storyboard_data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_ui.cjs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_ui.cjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_web_performance.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_web_performance.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_wordcloud_adapter.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_wordcloud_adapter.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_wordcloud_layout.cjs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_wordcloud_layout.cjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_wordcloud_signal.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_wordcloud_signal.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_xml_financials.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_xml_financials.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/assets/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/web/assets/app.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/assets/charts.js" beforeDir="false" afterPath="$PROJECT_DIR$/web/assets/charts.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/assets/data.js" beforeDir="false" afterPath="$PROJECT_DIR$/web/assets/data.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/assets/home.css" beforeDir="false" afterPath="$PROJECT_DIR$/web/assets/home.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/assets/service.css" beforeDir="false" afterPath="$PROJECT_DIR$/web/assets/service.css" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -87,6 +156,8 @@
       <workItem from="1791269756284" duration="5004000" />
       <workItem from="1791430380987" duration="164000" />
       <workItem from="1791430862438" duration="1055000" />
+      <workItem from="1791619284187" duration="69000" />
+      <workItem from="1791765825987" duration="709000" />
     </task>
     <task id="LOCAL-00001" summary="최종 구상 사항 반영">
       <option name="closed" value="true" />
@@ -112,7 +183,15 @@
       <option name="project" value="LOCAL" />
       <updated>1791430529555</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="배포 전 수정사항 반영">
+      <option name="closed" value="true" />
+      <created>1791619330526</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1791619330526</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -134,6 +213,7 @@
     <MESSAGE value="최종 구상 사항 반영" />
     <MESSAGE value="최종 구상 사항 반영(재커밋)" />
     <MESSAGE value="최종 구상 사항 반영(2차)" />
-    <option name="LAST_COMMIT_MESSAGE" value="최종 구상 사항 반영(2차)" />
+    <MESSAGE value="배포 전 수정사항 반영" />
+    <option name="LAST_COMMIT_MESSAGE" value="배포 전 수정사항 반영" />
   </component>
 </project>

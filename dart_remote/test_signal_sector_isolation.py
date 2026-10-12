@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from dart_remote.dart_signal_wordcloud import (
+from .dart_signal_wordcloud import (
     KeywordExtractor,
     SignalConfig,
     _canonical,
@@ -14,7 +14,7 @@ from dart_remote.dart_signal_wordcloud import (
     score_keywords,
     wordcloud_items,
 )
-from dart_remote.signal_keyword_rules import (
+from .signal_keyword_rules import (
     AUTOMOBILE_VOCABULARY, BANK_VOCABULARY, GENERIC_VOCABULARY,
     HEALTHCARE_VOCABULARY, SEMICONDUCTOR_VOCABULARY,
     SECTOR_VOCABULARIES, SectorVocabulary,
@@ -74,7 +74,10 @@ class SectorIsolationTests(unittest.TestCase):
             for code in ("a", "b")
         ])
         result = score_keywords(
-            chunks, SignalConfig("KRX_DUMMY", vocabulary=self.dummy_vocabulary()), companies
+            chunks, SignalConfig(
+                "KRX_DUMMY", years=(2023, 2024, 2025),
+                vocabulary=self.dummy_vocabulary(),
+            ), companies
         )
         self.assertIn("배터리 셀", set(result["keyword"]))
         self.assertIn("glass 소재", set(result["keyword"]))
@@ -136,6 +139,20 @@ class SectorIsolationTests(unittest.TestCase):
         )[0]
         self.assertIn("FDA", health)
         self.assertIn("식품의약품안전처", health)
+
+    def test_low_information_role_pairs_do_not_remove_sector_concepts(self) -> None:
+        for phrase in (
+            "세계 최초", "지급 의무", "반환 의무", "상호 협의",
+            "영업 설비", "자금 조달",
+        ):
+            self.assertFalse(_is_informative_phrase(phrase))
+        for phrase, vocabulary in (
+            ("미세 공정", SEMICONDUCTOR_VOCABULARY),
+            ("데이터 센터", SEMICONDUCTOR_VOCABULARY),
+            ("FDA 허가", HEALTHCARE_VOCABULARY),
+            ("기업 대출", BANK_VOCABULARY),
+        ):
+            self.assertTrue(_is_informative_phrase(phrase, vocabulary))
 
 
 if __name__ == "__main__":

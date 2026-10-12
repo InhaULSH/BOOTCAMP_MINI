@@ -22,13 +22,15 @@ class Sector:
     topics:tuple=('주요 사업 제품 고객 수요 시장 변화','설비투자 생산능력 연구개발 양산','경쟁 위험 가격 재고')
     terms:tuple=()
     profiles:dict|None=None
+    registered_data_version:str|None=None
+    release_selection_signature:str|None=None
+    release_equivalence:str|None=None
 
 def _sectors(root=None,all_sectors=False):
     config_path=Path(os.getenv('SECTOR_CONFIG',str(BASE/'config/sectors.json')))
     config=json.loads(config_path.read_text(encoding='utf-8')) if config_path.exists() else {}
-    versions=db.rows('SELECT * FROM data_versions WHERE is_current=1')
-    if len(versions)!=1 or not versions[0]['validated']:raise RuntimeError('검증된 현재 데이터 버전이 정확히 하나 있어야 합니다.')
-    version=versions[0]
+    from .release_selection import resolve
+    selection=resolve();version=selection['selected']
     allowed=set() if all_sectors else {v.strip() for v in os.getenv('SNAPDART_SECTORS','').split(',') if v.strip()}
     indices=db.rows('SELECT * FROM krx_indices WHERE is_active=1 ORDER BY index_code')
     indices=[r for r in indices if not allowed or allowed.intersection((r['display_name'] or r['index_name'],r['index_code'],r.get('official_index_code')))]
@@ -49,11 +51,12 @@ def _sectors(root=None,all_sectors=False):
         membership=hashlib.sha256(json.dumps(members,sort_keys=True).encode()).hexdigest()
         result.append(Sector(name,name,r['index_code'],version['data_version']+':'+membership,version['index_version'],
             r['official_index_code'] or settings.get('index_code') or r['index_code'],tuple(settings.get('companies_order',())),
-            tuple(settings.get('queries',Sector.__dataclass_fields__['topics'].default)),tuple(settings.get('terms',())),settings.get('company_profiles',{})))
+            tuple(settings.get('queries',Sector.__dataclass_fields__['topics'].default)),tuple(settings.get('terms',())),settings.get('company_profiles',{}),
+            selection['registered']['data_version'],selection['signature'],selection['equivalence']))
     return result
 
 def sectors(root=None,all_sectors=False):
-    key=('catalog',str(root),all_sectors,os.getenv('SNAPDART_SECTORS',''),os.getenv('SECTOR_CONFIG',''))
+    key=('catalog',str(root),all_sectors,os.getenv('SNAPDART_SECTORS',''),os.getenv('SECTOR_CONFIG',''),os.getenv('SERVICE_DATA_VERSION',''))
     path=Path(os.getenv('SECTOR_CONFIG',str(BASE/'config/sectors.json')))
     try:stat=path.stat();config_stamp=(str(path.resolve()),stat.st_mtime_ns,stat.st_size)
     except FileNotFoundError:config_stamp=(str(path),None)

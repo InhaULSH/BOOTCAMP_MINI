@@ -1,5 +1,5 @@
 import unittest
-from dart_remote.capex_validation import resolve,verified_financial
+from dart_remote.capex_validation import resolve,verified_financial,flow
 from dart_remote.keyword_fallback import result
 from dart_remote.generation import generate_all
 from types import SimpleNamespace
@@ -39,6 +39,28 @@ class CapexTests(unittest.TestCase):
     def test_cashflow_negative_sign_does_not_become_negative_outlay(self):
         entries=self.entries();entries[('Q1','cumulative')]=fact('Q1',10,signed_normalized_value=-10,sign_normalized=1)
         self.assertEqual(self.resolve(entries)[0],15)
+    def test_jusung_component_policy_is_company_specific(self):
+        entries=self.entries()
+        entries[('H1','cumulative')]=fact('H1',25,source_account_ids='["land_purchase","machinery_purchase"]')
+        repo=SimpleNamespace(financial=lambda code,y,t,b,k:dict(capex=entries.get((t,k),(None,[]))[0],
+            financial_sources={'capex':entries.get((t,k),(None,[]))[1]}))
+        value,_,_,proof=flow(repo,'036930',2023,'CFS',2)
+        self.assertEqual(value,15);self.assertEqual(proof['account_policy'],'jusung_ppe_component_sum')
+        self.assertIsNone(flow(repo,'028300',2023,'CFS',2)[0])
+    def test_component_policy_preserves_other_checks(self):
+        for change in [dict(period_start='2023-04-01'),dict(active_rcept_no='correction'),
+                       dict(review_required=1),dict(currency='USD'),dict(data_version='v2'),dict(scope='other')]:
+            with self.subTest(change=change):
+                entries=self.entries();entries[('H1','cumulative')]=fact('H1',25,**change)
+                self.assertIsNone(resolve(lambda t,k:entries.get((t,k),(None,[])),2023,'CFS',2,ignore_account_composition=True)[0])
+        entries={('Q1','cumulative'):fact('Q1',25),('H1','cumulative'):fact('H1',10)}
+        self.assertIsNone(resolve(lambda t,k:entries.get((t,k),(None,[])),2023,'CFS',2,ignore_account_composition=True)[0])
+    def test_component_policy_applies_to_annual_reconstruction(self):
+        entries={('FY','annual'):fact('FY',100,source_account_ids='["land_purchase"]'),
+            ('Q1','quarterly'):fact('Q1',10),
+            ('Q3','quarterly'):fact('Q3',30,period_start='2023-07-01'),
+            ('FY','quarterly'):fact('FY',40,period_start='2023-10-01')}
+        self.assertEqual(resolve(lambda t,k:entries.get((t,k),(None,[])),2023,'CFS',2,ignore_account_composition=True)[0],20)
     def test_direct_three_month_report_is_accepted(self):
         entries={('H1','quarterly'):fact('H1',7,period_start='2023-04-01')}
         self.assertEqual(self.resolve(entries)[0],7)

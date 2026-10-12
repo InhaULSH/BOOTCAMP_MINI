@@ -53,6 +53,8 @@ class WebPerformanceTests(unittest.TestCase):
         self.assertEqual([c['id'] for c in result['companies']],['반도체:1','반도체:2'])
         self.assertNotIn('financials',result['companies'][0])
         self.assertIn('financials',result['companies'][1])
+        self.assertEqual(result['companies'][1]['periods'],[])
+        self.assertEqual(result['sectors'][0]['periods'],[])
         self.assertEqual(graph.public_rows.call_count,1)
 
     def test_project_cache_separates_company(self):

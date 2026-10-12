@@ -5,6 +5,8 @@ from snapdart.ui_project import quarter_rows,keywords
 
 class FakeRepo:
     def __init__(self,missing=False):self.missing=missing
+    def facts(self,code,year,report_type,basis,value_type):
+        return [{}] if basis=='CFS' else []
     def financial(self,code,year,report_type,basis='CFS',value_type=None):
         i=('Q1','H1','Q3','FY').index(report_type)
         value=None if self.missing and i==1 else (i+1)*100

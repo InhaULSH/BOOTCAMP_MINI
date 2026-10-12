@@ -1,3 +1,4 @@
+import os
 import json
 import tempfile
 import unittest
@@ -6,6 +7,7 @@ from unittest.mock import patch
 from types import SimpleNamespace
 from dart_remote import llm_diagnostics as d,citation_selection as selection
 
+@patch.dict(os.environ, {'INSIGHT_VALIDATION_MODE': 'strict'})
 class DiagnosticTests(unittest.TestCase):
     def test_reference_failures_include_scores_and_each_sentence(self):
         text='AI 서버의 수요에 대응하여 생산능력 확대를 계획하고 있습니다.'

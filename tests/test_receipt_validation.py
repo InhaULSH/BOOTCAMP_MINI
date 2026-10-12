@@ -47,7 +47,7 @@ class ReceiptValidationTests(unittest.TestCase):
             with self.assertRaises(Unverified):validate(dict(row,value=1),active,'v',[prior])
     def test_reconcile_failure_keeps_gaps_and_matching_fast_path(self):
         matching=metric(source_rcept_no='20260324000835')
-        with patch('dart_remote.receipt_validation.validate',side_effect=Unverified('mismatch')) as check,patch('dart_remote.receipt_validation.artifacts.put_artifact') as record:
+        with patch('dart_remote.receipt_validation.replacement',side_effect=Unverified('mismatch')) as check,patch('dart_remote.receipt_validation.artifacts.put_artifact') as record:
             self.assertEqual(reconcile([matching,metric()],'v'),[matching]);self.assertEqual(check.call_count,1);self.assertEqual(record.call_args.args[2]['status'],'unverified')
     def test_numeric_conflicts_rejected(self):
         payload=raw().replace(b'</DOCUMENT>',raw(value='1,201').split(b'<TABLE>')[1].join([]) if False else b'</DOCUMENT>')
@@ -65,7 +65,7 @@ class ReceiptValidationTests(unittest.TestCase):
             with self.assertRaises(Unverified):db_document('doc','v','wrong',len(raw()))
     def test_success_audit_retains_both_receipts(self):
         proof=dict(status='verified',evidence=[dict(rcept_no='20260619000667'),dict(rcept_no='20260324000835')])
-        with patch('dart_remote.receipt_validation.validate',return_value=proof),patch('dart_remote.receipt_validation.artifacts.put_artifact') as save:
+        with patch('dart_remote.receipt_validation.replacement',return_value=dict(metric(),receipt_validation=proof)),patch('dart_remote.receipt_validation.artifacts.put_artifact') as save:
             result=reconcile([metric()],'v')
         self.assertEqual(result[0]['source_rcept_no'],'20260619000667')
         self.assertEqual(result[0]['receipt_validation'],proof)

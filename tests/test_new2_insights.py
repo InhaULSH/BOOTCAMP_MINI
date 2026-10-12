@@ -10,15 +10,14 @@ from pathlib import Path
 from unittest.mock import patch, Mock
 
 from snapdart.data_access import pipeline, prompts
-from dart_remote import insight_plan, retrieval_context, citation_selection as selection
+from dart_remote import retrieval_context, citation_selection as selection
 
 
+@patch.dict(os.environ, {'INSIGHT_VALIDATION_MODE': 'strict'})
 class New2InsightTests(unittest.TestCase):
     def setUp(self):
         self.calls=[]
-        self.plan_override=None
         self.final_ref='t1'
-        self.fact_count=1
         self.llm=types.SimpleNamespace(PROVIDER='offline-test',MODEL='offline-test',TEXT={'type':'string'},
             object_schema=lambda props:dict(type='object',properties=props,required=list(props)),request_report=self.request)
         text='AI 서버의 수요에 대응하여 생산능력 확대를 계획하고 있습니다.'
@@ -27,25 +26,26 @@ class New2InsightTests(unittest.TestCase):
             text=text,anchor_start=0) for i in (1,2)]
         self.financial=dict(year=2025,basis='CFS',revenue=None,operating_income=None,capex=None,
             operating_cashflow=None,yoy={},margin=None,fcf=None,financial_sources={})
+        self.financial.update(revenue=12000000000,operating_income=1200000000,financial_sources={k:[dict(rcept_no='receipt2025',original_account_nm=k)] for k in ('revenue','operating_income')})
         self.company=dict(code='000001',name='기업가',history=[self.financial])
         self.repo=types.SimpleNamespace(sector=types.SimpleNamespace(id='test',name='테스트'),
             financial=lambda *a,**k:dict(self.financial,report_type=a[2]),search=lambda *a,**k:(self.rows,{}))
 
     def request(self,context,evidence,**options):
         self.calls.append(dict(context=copy.deepcopy(context),**options))
-        if 'facts' in options['schema']['properties']:
-            value=self.plan_override if self.plan_override is not None else dict(facts=[
-                dict(fact=f'생산능력 확대 계획의 근거 사실 {i}',state='planned',
-                    support=[dict(id='t1',passage_ids=['t1-p1'])]) for i in range(self.fact_count)],insufficient_reason='')
-        else:
-            eid=self.final_ref
-            value=dict(sentences=[dict(text='생산능력 확대를 계획하고 있습니다.',refs=[eid],
-                assessments=[dict(id=eid,grades=dict(F=4,U=4,C=4,T=4),suitable=True,reason='직접 원문',
-                    irrelevant_content='none',redundancy='none',passage_ids=[eid+'-p1'])])],insufficient_reason='')
+        eid=self.final_ref
+        value=dict(sentences=[dict(text='생산능력 확대를 계획하고 있습니다.',refs=[eid],
+            assessments=[dict(id=eid,grades=dict(F=4,U=4,C=4,T=4),suitable=True,reason='직접 원문',
+                irrelevant_content='none',redundancy='none',passage_ids=[eid+'-p1'])])],insufficient_reason='')
+        if any(str(e).startswith('f') for e in options['schema']['properties']['sentences']['items']['properties']['refs']['items']['enum']):
+            f=next((e for e in evidence if e['kind']=='financial' and e.get('metric')=='revenue' and e['year']==2025 and e['report_type']=='FY'),None)
+            if f:
+                value['sentences'].insert(0,dict(text='2025년 연간 매출액은 120억원입니다.',refs=[f['id']],assessments=[]))
         return dict(report=options['validator'](copy.deepcopy(value),evidence),usage={},model='offline-test')
 
     def run_profile(self,profile,folder,company=False,keyword=None,force=False):
         report=dict(companies=[self.company],years=[2025],citations={},wordcloud={})
+        self.last_report=report
         package=types.ModuleType('snapdart');package.llm=self.llm
         with patch.dict(os.environ,{'LLM_PROMPT_VERSION':profile}),patch.dict(sys.modules,{'snapdart':package}),\
              patch.object(pipeline,'SERVICE',Path(folder)),patch.object(pipeline,'evidence_rows',return_value=self.rows):
@@ -61,65 +61,58 @@ class New2InsightTests(unittest.TestCase):
         self.assertNotIn('new2:',self.calls[0]['instruction'])
         self.assertEqual(set(result['sentences'][0]),{'text','source_refs'})
 
-    def test_two_stages_and_correct_limits_for_all_scopes(self):
-        for company,keyword,limit in ((False,None,10),(True,None,5),(False,'HBM',5),(True,'HBM',5)):
+    def test_new2_is_single_stage_for_every_scope(self):
+        from snapdart.data_access import prompts_new2
+        for company,keyword in ((False,None),(True,None),(False,'HBM'),(True,'HBM')):
             with self.subTest(company=company,keyword=keyword),tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as folder:
-                self.calls=[];self.fact_count=limit
+                self.calls=[]
                 result=self.run_profile('new2',folder,company=company,keyword=keyword)
-                self.assertEqual(len(self.calls),2)
-                self.assertEqual(self.calls[0]['context']['max_facts'],limit)
-                self.assertEqual(self.calls[0]['schema']['properties']['facts']['maxItems'],limit)
-                self.assertFalse(self.calls[0]['allow_repair'])
-                self.assertEqual(len(self.calls[1]['context']['evidence_plan']['facts']),limit)
-                self.assertEqual(self.calls[1]['context']['evidence_plan']['facts'][0]['support'][0]['company'],'기업가')
-                self.assertEqual(len(result['sentences']),1)
-                self.assertIn('중요',self.calls[1]['instruction'])
+                self.assertEqual(len(self.calls),1)
+                call=self.calls[0]
+                self.assertNotIn('evidence_plan',call['context'])
+                self.assertNotIn('generation_stage',call['context'])
+                self.assertNotIn('facts',call['schema']['properties'])
+                self.assertNotIn('사실 정리',result['method'])
+                self.assertEqual(result['prompt_version'],prompts_new2.VERSION)
+                self.assertTrue(any(s['source_refs'] for s in result['sentences']))
+                if not keyword:self.assertEqual(result['sentences'][0]['source_refs'],[])
+                self.assertTrue(all(self.last_report['citations'][ref]['source_kind']=='filing'
+                                    for sentence in result['sentences'] for ref in sentence['source_refs']))
                 self.assertEqual(set(result['sentences'][0]),{'text','source_refs'})
+                function='keyword' if keyword else 'company' if company else 'insight'
+                instruction=prompts_new2.instruction(function)
+                self.assertTrue(call['instruction'].startswith(instruction))
+                if not keyword:
+                    self.assertIn('재무',call['instruction'])
+                    self.assertEqual(call['schema']['properties']['sentences']['maxItems'],3)
+                    self.assertIn('실제',call['context']['task'])
+                else:
+                    self.assertEqual(instruction,prompts.instruction(function))
 
-    def test_empty_plan_skips_writer_and_keeps_explicit_reason(self):
-        self.plan_override=dict(facts=[],insufficient_reason='직접적인 사업 근거 부족')
-        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as folder:result=self.run_profile('new2',folder)
-        self.assertEqual(len(self.calls),1)
-        self.assertEqual(result['sentences'],[])
-        self.assertEqual(result['insufficient_reason'],'직접적인 사업 근거 부족')
-
-    def test_bad_plan_never_reaches_writer(self):
-        self.plan_override=dict(facts=[dict(fact='사업 계획',state='planned',support=[dict(id='missing',passage_ids=['x'])])],insufficient_reason='')
-        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as folder,self.assertRaisesRegex(ValueError,'청크 ID'):
-            self.run_profile('new2',folder)
-        self.assertEqual(len(self.calls),1)
-
-    def test_over_limit_is_rejected_not_silently_truncated(self):
-        self.fact_count=6
-        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as folder,self.assertRaisesRegex(ValueError,'최대 5개'):
-            self.run_profile('new2',folder,company=True)
-        self.assertEqual(len(self.calls),1)
-
-    def test_unplanned_final_citation_is_rejected(self):
-        self.final_ref='t2'
-        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as folder,self.assertRaisesRegex(ValueError,'사실 정리에 없는'):
-            self.run_profile('new2',folder)
-
-    def test_profiles_have_separate_caches_and_cached_plan_is_revalidated(self):
+    def test_new2_profile_and_cache_do_not_reuse_discarded_plan(self):
+        from snapdart.data_access import prompts_new2
+        self.assertFalse(getattr(prompts_new2,'TWO_STAGE',False))
+        self.assertNotEqual(prompts_new2.VERSION,'bigin-user-2026-10-10-new2-v1')
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as folder:
-            self.run_profile('new',folder)
-            result=self.run_profile('new2',folder)
-            self.assertEqual(len(self.calls),3)
-            cached=self.run_profile('new2',folder)
-            self.assertEqual(len(self.calls),3)
-            self.assertEqual(result,cached)
-            paths=list(Path(folder).rglob('*-plan.json'))
-            self.assertEqual(len(paths),1)
-            for sentence in cached['sentences']:
-                self.assertTrue(sentence['source_refs'])
-            final=next(p for p in Path(folder).rglob('*.json') if not p.name.endswith('-plan.json')
-                and '_evidence_plan' in json.loads(p.read_text(encoding='utf-8')).get('report',{}))
-            corrupted=json.loads(final.read_text(encoding='utf-8'))
-            corrupted['report']['_evidence_plan']['facts'][0]['support'][0]['id']='missing'
-            final.write_text(json.dumps(corrupted,ensure_ascii=False),encoding='utf-8')
-            self.run_profile('new2',folder)
-            # Regenerate only the final draft; the intact planning cache is reused.
-            self.assertEqual(len(self.calls),4)
+            self.run_profile('new',folder,company=True)
+            result=self.run_profile('new2',folder,company=True)
+            self.assertEqual(len(self.calls),2)
+            self.assertEqual(result,self.run_profile('new2',folder,company=True))
+            self.assertEqual(len(self.calls),2)
+            self.assertEqual(len(list(Path(folder).rglob('*.json'))),2)
+            self.assertFalse(list(Path(folder).rglob('*-plan.json')))
+
+    def test_new2_context_changes_industry_and_company_only(self):
+        from snapdart.data_access import prompts_new2
+        for company,keyword in ((None,'HBM'),('기업가','HBM')):
+            self.assertEqual(prompts_new2.context('테스트',[],[],company,keyword),
+                prompts.context('테스트',[],[],company,keyword))
+        original=prompts.context('테스트',[{'company':'기업가'}],[{'id':'t1'}],'기업가')
+        updated=prompts_new2.context('테스트',[{'company':'기업가'}],[{'id':'t1'}],'기업가')
+        self.assertEqual({k:v for k,v in original.items() if k!='task'},
+            {k:v for k,v in updated.items() if k!='task'})
+        self.assertIn('재무',updated['task'])
+        self.assertNotEqual(prompts_new2.context('테스트',[],[])['task'],prompts.context('테스트',[],[])['task'])
 
     def test_old_stays_single_stage(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as folder:result=self.run_profile('old',folder,company=True)
@@ -127,7 +120,21 @@ class New2InsightTests(unittest.TestCase):
         self.assertNotIn('근거 사실 정리',result['method'])
         self.assertNotIn('maxItems',self.calls[0]['schema']['properties']['sentences'])
 
+    def test_definition_sections_are_embedded_without_numbered_list_truncation(self):
+        import re
+        from snapdart.data_access import prompts_new2
+        from dart_remote import citation_selection_new2
+        root=Path(__file__).resolve().parents[1]
+        definition=(root/'docs/4차구상/프롬프트_정의서_new2.md').read_text(encoding='utf-8-sig')
+        definition=definition.replace('<u>','').replace('</u>','')
+        normalize=lambda text:re.sub(r'\s+',' ',text).strip()
+        for name in ('COMMON','INSIGHT','COMPANY','NUMERIC_CLAIMS','RETRIEVAL'):
+            with self.subTest(name=name):self.assertIn(normalize(getattr(prompts_new2,name)),normalize(definition))
+        self.assertIn(normalize(citation_selection_new2.INSTRUCTION),normalize(definition))
+        self.assertIn('고객 화면 각주는 자연어 공시만 표시',prompts_new2.instruction('company'))
 
+
+@patch.dict(os.environ, {'INSIGHT_VALIDATION_MODE': 'strict'})
 class RetrievalContextTests(unittest.TestCase):
     def row(self,year=2025,code='000001',report_type='Q3',suffix=''):
         month={'Q3':'09','FY':'12'}[report_type]

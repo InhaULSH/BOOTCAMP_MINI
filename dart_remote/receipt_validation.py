@@ -19,7 +19,7 @@ from .asset_versions import source_versions, version_filter
 from .xml_source import decode, sanitize
 from .xml_financials import number, grid
 
-VERSION='receipt-proof-v1'
+VERSION='receipt-proof-v2-selected-xml'
 REPORT_CODES={'FY':('11011',),'Q1':('11013',),'H1':('11012',),'Q3':('11013','11014')}
 # DART XML uses the quarterly document code for both Q1 and Q3;
 # ACONTEXT below determines the exact reporting period.
@@ -172,6 +172,46 @@ def validate(row,active,version,candidates):
     return dict(status='verified',method=VERSION,verified_at=int(time.time()),stored_receipt=receipt,
         active_receipt=active['rcept_no'],formula=formula,evidence=evidence)
 
+def selected_value(row,receipt,version):
+    """Extract the selected document cell independently of the stored amount."""
+    evidence=[]
+    for raw,meta in documents(receipt,version):
+        identity,facts=tagged_facts(raw)
+        if identity['corp_code']!=row['corp_code'] or identity['report_code'] not in REPORT_CODES.get(row['report_type'],()):continue
+        for fact in facts:
+            if all(fact.get(k)==row.get(k) for k in ('year','report_type','fs_div','value_type')) and fact['account_id']==row.get('source_account_id'):
+                evidence.append(dict(fact,rcept_no=receipt,document_id=meta['document_id'],sha256=meta['sha256'],origin=meta['origin']))
+    values={r['value'] for r in evidence}
+    if len(values)!=1:raise Unverified('선택 XML에서 계정·기간·단위가 확정된 단일 수치를 찾지 못했습니다.')
+    return next(iter(values)),evidence
+
+def replacement(row,version,candidates):
+    from .disclosure_policy import label,WARNING
+    if SCOPE.get(row.get('scope'))!=row.get('fs_div'):raise Unverified('확인되지 않은 회계 범위입니다.')
+    receipt=row['active_rcept_no'];formula=None
+    if row['report_type']=='FY' and row['value_type']=='quarterly':
+        annual,evidence=selected_value(dict(row,value_type='annual'),receipt,version)
+        prior=[r for r in candidates if all(r.get(k)==row.get(k) for k in ('corp_code','year','fs_div','scope','metric_code'))
+               and r['report_type']=='Q3' and r['value_type']=='cumulative' and r.get('review_status')=='approved'
+               and r.get('unit')=='KRW' and r.get('active_rcept_no')]
+        if not prior:raise Unverified('4분기 역산에 필요한 선택 Q3 XML 기준이 없습니다.')
+        extracted=[selected_value(r,r['active_rcept_no'],version) for r in prior]
+        if len({v for v,_ in extracted})!=1:raise Unverified('Q3 누적값이 충돌합니다.')
+        previous=extracted[0][0];value=annual-previous
+        evidence += [e for _,items in extracted for e in items];formula='FY - Q3'
+        inputs={'FY':annual,'Q3':previous}
+    else:
+        value,evidence=selected_value(row,receipt,version);inputs=None
+    proof=dict(status='selected_xml',method=VERSION,estimated=True,note=WARNING,
+               stored_receipt=row['source_rcept_no'],active_receipt=receipt,evidence=evidence,formula=formula)
+    output=label(dict(row,value=value,source_rcept_no=receipt,source_document_id=evidence[0]['document_id'],
+                      source_chunk_id=None,source_kind='DOCUMENT_EXTRACTED',source_type='selected_xml_receipt_mismatch',
+                      receipt_validation=proof),row['source_rcept_no'])
+    # Do not retain the old receipt's derived inputs or formula.
+    output['source_values']=inputs or {'selected_xml_value':value}
+    output['calculation_method']=formula or 'selected XML cell extraction'
+    return output
+
 def reconcile(rows,version):
     accepted=[]
     for row in rows:
@@ -181,10 +221,10 @@ def reconcile(rows,version):
         if not row.get('active_rcept_no'):continue
         active=dict(corp_code=row['corp_code'],year=row['year'],report_type=row['report_type'],rcept_no=row['active_rcept_no'])
         try:
-            proof=validate(row,active,version,rows)
+            replaced=replacement(row,version,rows);proof=replaced['receipt_validation']
             key=hashlib.sha256(json.dumps([VERSION,version,row,proof['evidence']],sort_keys=True,ensure_ascii=False,default=str).encode()).hexdigest()
             artifacts.put_artifact('_receipt_validation','proof',proof,key)
-            accepted.append(dict(row,receipt_validation=proof))
+            accepted.append(replaced)
         except (Unverified,ET.ParseError,OSError,ValueError,zipfile.BadZipFile) as error:
             failure=dict(status='unverified',method=VERSION,checked_at=int(time.time()),stored_receipt=row.get('source_rcept_no'),
                 active_receipt=row.get('active_rcept_no'),reason=str(error),metric_code=row['metric_code'],value_type=row['value_type'])

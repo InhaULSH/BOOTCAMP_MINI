@@ -7,7 +7,7 @@ from .dart_signal_wordcloud import SignalConfig, score_keywords, wordcloud_items
 from .dart_company_signal_wordcloud import CompanySignalConfig,score_database_company_keywords_v2,company_wordcloud_items
 from .signal_keyword_rules import ALLOWED_SECTION_PREFIXES, ALLOWED_SUBSECTION_PHRASES
 
-VERSION='disclosure-signal-v3-industry-entropy-company-diversity'
+VERSION='disclosure-signal-v4-comparable-periods-noise-company-hot'
 
 def eligible(row):
     return row['report_type'] in ('Q1','H1','Q3','FY') and (
@@ -26,6 +26,9 @@ def display(scored,config):
                     years=list(config.years),scope='company' if company else 'sector')
         for name in ('signal_score','company_count','concentration_penalty','generic_business_penalty','diversity_score','entropy_score','company_coverage_score'):
             item[name]=float(row.get(name,0))
+        for name,value in row.items():
+            if name.startswith(('comparable_count_', 'comparable_rate_')):
+                item[name]=float(value)
         if company:item['company_count']=1
         item.update(keyword=item.get('keyword',item['text']),label=item.get('label',item['text']),size=float(row['final_signal_score']))
     return items
@@ -62,7 +65,7 @@ def apply(report,repo):
             if company['code'] in {m['stock_code'] for m in members}:sector_chunks.extend(rows)
         frame=pd.DataFrame(sector_chunks,columns=columns).drop_duplicates('chunk_id')
         missing=[y for y in years if not (frame['year']==y).any()]
-        items=[] if missing or not members else display(score_keywords(frame,config,pd.DataFrame(members)),config)
+        items=[] if years[-1] in missing or not members else display(score_keywords(frame,config,pd.DataFrame(members)),config)
         cached=dict(items=items,companies=company_outputs,years=list(years),missing_years=missing,
                     selected_companies=members,method=VERSION)
         artifacts.put_artifact(repo.sector.id,'wordcloud-'+key,cached)

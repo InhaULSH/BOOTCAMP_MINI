@@ -6,11 +6,12 @@ import re
 from functools import cached_property,lru_cache
 from . import db
 from .catalog import sector
+from .account_semantics import CASHFLOW_NAMES
 
 REPORTS={'Q1':('03','1분기보고서'),'H1':('06','반기보고서'),'HY':('06','반기보고서'),'Q3':('09','3분기보고서'),'FY':('12','사업보고서')}
 ACCOUNTS={'revenue':('매출액','수익(매출액)','영업수익','수익'),
  'operating_income':('영업이익','영업이익(손실)','영업손익'),
- 'operating_cashflow':('영업활동현금흐름','영업활동으로 인한 현금흐름','영업활동으로인한현금흐름'),
+ 'operating_cashflow':CASHFLOW_NAMES,
  'inventory':('재고자산',),'capex':('유형자산취득(CAPEX)',)}
 IDS={'revenue':('ifrs-full_Revenue','ifrs_Revenue'),'operating_income':('dart_OperatingIncomeLoss',),
  'operating_cashflow':('ifrs-full_CashFlowsFromUsedInOperatingActivities','ifrs_CashFlowsFromUsedInOperatingActivities'),
@@ -77,18 +78,24 @@ class Repository:
         fallback_params=dict(params,operating_id=IDS['operating_income'][0],cf_id=IDS['operating_cashflow'][0],cf_old=IDS['operating_cashflow'][1])
         for i,name in enumerate(aliases):fallback_params['a'+str(i)]=name
         alias_sql=','.join(':a'+str(i) for i in range(len(aliases)))
+        for i,name in enumerate(CASHFLOW_NAMES):fallback_params['cf_alias'+str(i)]=name
+        cf_alias_sql=','.join(':cf_alias'+str(i) for i in range(len(CASHFLOW_NAMES)))
+        fallback_params['nonstandard']='-표준계정코드 미사용-'
         raw=db.rows('''SELECT f.*,c.corp_name,
             CASE WHEN f.is_calculated=1 THEN f.calculated_value ELSE f.normalized_value END AS value,
             CASE WHEN f.sj_div='CF' THEN '영업활동현금흐름' ELSE '영업이익' END AS standard_account,'reported' AS value_source
             FROM financial_facts f JOIN companies c USING(corp_code)
             WHERE '''+where+''' AND f.data_version=:version AND f.is_active=1
             AND ((f.sj_div IN ('IS','CIS') AND (f.account_id=:operating_id OR f.standard_account_nm IN ('''+alias_sql+''')))
-              OR (f.sj_div='CF' AND f.account_id IN (:cf_id,:cf_old)))
+              OR (f.sj_div='CF' AND (f.account_id IN (:cf_id,:cf_old)
+                  OR (f.account_id=:nonstandard AND (f.original_account_nm IN ('''+cf_alias_sql+''')
+                       OR f.standard_account_nm IN ('''+cf_alias_sql+'''))))))
             AND NOT EXISTS (SELECT 1 FROM standardized_financials v
                 WHERE v.corp_code=f.corp_code AND v.year=f.year AND v.report_type=f.report_type
                 AND v.rcept_no=f.rcept_no AND v.fs_div=f.fs_div AND v.sj_div=f.sj_div
                 AND v.currency=f.currency AND v.value_type=f.value_type AND v.data_version=f.data_version
-                AND v.account_id=f.account_id)''',fallback_params)
+                AND v.account_id=f.account_id
+                AND (f.sj_div<>'CF' OR v.original_account_nm=f.original_account_nm))''',fallback_params)
         for r in raw:
             r['upstream_standard_account_nm']=r['standard_account_nm']
             r['financial_lookup']='financial_facts-operating-cashflow-fallback' if r['sj_div']=='CF' else 'financial_facts-operating-profit-fallback'
@@ -117,6 +124,9 @@ class Repository:
         for section in (('IS','CIS') if key in ('revenue','operating_income') else ('BS',) if key=='inventory' else ('CF',)):
             pool=[r for r in rows if r['sj_div']==section and r['currency']=='KRW']
             matches=[r for r in pool if r['standard_account_nm'] in ACCOUNTS[key]]
+            if key=='operating_cashflow':
+                matches=[r for r in matches if r.get('account_id') in IDS[key]+('-표준계정코드 미사용-',)
+                    or r['standard_account_nm'] in ('영업활동현금흐름','영업활동으로 인한 현금흐름','영업활동으로인한현금흐름')]
             if not matches:matches=[r for r in pool if r.get('account_id') in IDS.get(key,())]
             pairs=[(r,r.get('value',r.get('calculated_value') if r.get('is_calculated') else r.get('normalized_value'))) for r in matches]
             values={v for _,v in pairs if v is not None}
@@ -137,15 +147,35 @@ class Repository:
         rows=self.facts(code,year,report_type,basis,value_type);values={};sources={}
         report_type='H1' if report_type=='HY' else report_type
         mode='json';note=''
-        if not rows and not self.json_financial_exists(code,year,report_type):
+        mismatches=[r for r in rows if r.get('active_rcept_no') and r.get('rcept_no')
+                    and r['active_rcept_no']!=r['rcept_no']]
+        # Raw-account fallbacks do not carry the active receipt from the view.
+        if rows and any(r.get('rcept_no') and not r.get('active_rcept_no') for r in rows):
+            receipts={d['rcept_no'] for d in self.documents(code)
+                      if d['year']==int(year) and d['report_type']==report_type}
+            if len(receipts)==1:
+                active=next(iter(receipts))
+                mismatches=[r for r in rows if r.get('rcept_no') and r['rcept_no']!=active]
+        if mismatches or (not rows and not self.json_financial_exists(code,year,report_type)):
             from .xml_financials import load
+            original_rows=rows
             rows,note=load(self,code,year,report_type,basis,value_type or ('annual' if report_type=='FY' else 'cumulative'))
+            if mismatches:
+                from .disclosure_policy import label,WARNING
+                old=sorted({r['rcept_no'] for r in mismatches})
+                rows=[label(r,old) for r in rows]
+                note=WARNING+' '+note.replace('JSON 재무 자료 부재로','접수번호 불일치로')
             mode='xml'
             for key in ACCOUNTS:
                 selected=[r for r in rows if r['key']==key]
                 distinct={r['value'] for r in selected}
                 values[key]=next(iter(distinct)) if len(distinct)==1 else None
                 sources[key]=selected if len(distinct)==1 else []
+                # A value already tied to the selected receipt remains usable;
+                # a mismatching JSON value is never a fallback for a failed XML cell.
+                if not selected and mismatches:
+                    matching=[r for r in original_rows if r not in mismatches]
+                    values[key],sources[key]=self.metric(matching,key)
                 if len(distinct)>1:note+=f' {key}: XML 표의 값이 충돌하여 표시하지 않았습니다.'
         else:
             for key in ACCOUNTS:values[key],sources[key]=self.metric(rows,key)
@@ -238,6 +268,15 @@ class Repository:
         return sorted(selected.values(),key=lambda r:(r['period'],r['chunk_id'])),dict(mode=__import__('dart_remote.mysql_vectors',fromlist=['backend']).backend(),periods=len(docs))
     def fingerprint(self):
         config=dict(version=self.sector.data_version,index_version=self.sector.index_version,membership=self.sector.membership_code,
+            release_selection=self.release_info(),
             topics=self.sector.topics,terms=self.sector.terms,profiles=self.sector.profiles,order=self.sector.companies_order,
-            search_backend=__import__('dart_remote.mysql_vectors',fromlist=['backend']).backend(),embedding_revision=__import__('dart_remote.mysql_vectors',fromlist=['REVISION']).REVISION,search_api=os.getenv('FILING_SEARCH_API_URL',''),adapter='central-mysql-bge-v6-company-wordcloud')
+            search_backend=__import__('dart_remote.mysql_vectors',fromlist=['backend']).backend(),embedding_revision=__import__('dart_remote.mysql_vectors',fromlist=['REVISION']).REVISION,search_api=os.getenv('FILING_SEARCH_API_URL',''),adapter='central-mysql-bge-v7-selected-xml')
         return hashlib.sha256(json.dumps(config,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+
+    def release_info(self):
+        query=self.sector.data_version.split(':',1)[0]
+        return dict(registered_data_version=getattr(self.sector,'registered_data_version',None) or query,
+                    query_data_version=query,query_index_version=self.sector.index_version,
+                    release_selection_signature=getattr(self.sector,'release_selection_signature',None),
+                    release_selection_policy='release-selection-v2',
+                    release_equivalence=getattr(self.sector,'release_equivalence',None))

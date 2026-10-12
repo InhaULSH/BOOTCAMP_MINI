@@ -80,7 +80,7 @@ FastAPI 화면 API는 [공식 TestClient 방식](https://fastapi.tiangolo.com/tu
 재현 코드는 `tests/offline_xml_fixture.py`, `tests/offline_xml_server.py`, `tests/offline_server.Dockerfile`이다. 첫 파일은 실제 XML로 검증용 자료를 만들고, 두 번째 파일은 그 자료로 서버 경로를 시험한다. 모델이 로컬에 캐시되어 있어야 하며 없으면 다운로드하지 않고 실패한다.
 
 ```powershell
-# 프로젝트 루트에서 실행. 이 경로는 테스트 전용이다.
+## 프로젝트 루트에서 실행. 이 경로는 테스트 전용이다.
 .\.venv\Scripts\python.exe -X utf8 tests/offline_xml_fixture.py --output tmp/offline-xml
 .\.venv\Scripts\python.exe -X utf8 tests/offline_xml_server.py --fixture tmp/offline-xml --report tmp/offline-results/windows.json
 ```
@@ -88,3 +88,10 @@ FastAPI 화면 API는 [공식 TestClient 방식](https://fastapi.tiangolo.com/tu
 Linux에서 재현하려면 테스트 이미지에 소스 코드와 이 검증용 자료를 각각 읽기 전용으로 연결하고 `--network none`으로 실행한다. `deploy/cloudapp`, `deploy/dart_remote`, `deploy/config`, `deploy/web`과 테스트 코드만 연결한다. `.env`, 가상환경, 실제 서비스 저장 파일은 전달하지 않는다.
 
 이번 작업의 테스트용 XML 복사본·벡터·재무 행·생성 캐시·진단 로그·코드 복사본은 종료 후 삭제한다. 원본 `data/xml_origin`과 운영 모델 캐시·서비스 자료는 보존한다. 위 재현 코드와 이 결과 문서는 유지한다.
+
+
+## 2026-10-12 검증 모드별 테스트 해석
+
+기존 정밀 수치·등급·문장 수의 부정 사례는 INSIGHT_VALIDATION_MODE=strict를 명시해 검사한다. mvp 테스트는 출처 ID·유효 위치·경고 기록·개별 설명 실패 격리를 따로 검증한다. mvp 기본값에서 정밀 검사 오류를 기대하는 테스트는 현재 기능과 맞지 않는다. 프롬프트 일치 검사는 삭제된 TXT가 아니라 현재 new/new2 Markdown 정의서를 기준으로 하며 new2의 밑줄 태그를 제거한 본문으로 비교한다.
+
+`tests/test_prompt_versions.py`는 지원하는 세 버전·키워드 동일 동작·CLI 선택·종료 버전 거부와 과거 보고서 오분류 차단을 확인한다. 실제 DB/Gemini 호출 없이 검사하며 과거 품질·성능 측정값을 새 실서비스 검증값으로 재사용하지 않는다.

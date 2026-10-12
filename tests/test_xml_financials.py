@@ -24,7 +24,7 @@ class XMLFinancialTests(unittest.TestCase):
         self.assertEqual(values,dict(revenue=1200000000,operating_income=-20000000))
         self.assertEqual(rows[0]['column_index'],1)
         self.assertEqual(rows[0]['document_id'],'doc')
-        self.assertIn('background:#fff1aa',source_view(rows[0]))
+        self.assertIn('background:#e3edf9',source_view(rows[0]))
 
     def test_eps_unit_does_not_change_statement_unit(self):
         rows=self.parse(xml(extra='<TR><TD>주당이익 (단위: 원)</TD><TD>100</TD><TD>90</TD></TR>'))

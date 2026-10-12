@@ -5,7 +5,7 @@ import unittest
 
 import pandas as pd
 
-from dart_remote.dart_signal_wordcloud import (
+from .dart_signal_wordcloud import (
     SignalConfig,
     _result_from_counts,
     apply_industry_hot_flags,
@@ -29,7 +29,7 @@ class IndustrySpreadTests(unittest.TestCase):
         )
 
     def test_spread_is_sixty_percent_coverage_and_forty_percent_entropy(self) -> None:
-        config = SignalConfig("KRX_DUMMY", top_n=12)
+        config = SignalConfig("KRX_DUMMY", years=(2023, 2024, 2025), top_n=12)
         counts = {"산업 신호": {2023: 5, 2024: 5, 2025: 5}}
         company_counts = {"산업 신호": {code: 1 for code in "abcde"}}
         company_totals = {code: 10 for code in "abcde"}

@@ -24,7 +24,7 @@ class WordcloudAdapterTests(unittest.TestCase):
         row=dict(keyword='HBM',count_2025=3,rate_2025=.3,current_score=80,change_score=90,change_raw=.1,
             diversity_score=70,signal_score=80,final_signal_score=80,final_rank=1,is_hot=False,
             generic_business_penalty=0)
-        item=display(pd.DataFrame([row]),CompanySignalConfig('a',sector_index_code='KRX_SEMI'))[0]
+        item=display(pd.DataFrame([row]),CompanySignalConfig('a',sector_index_code='KRX_SEMI',years=(2023,2024,2025)))[0]
         self.assertEqual(item['text'],'HBM');self.assertEqual(item['count'],3)
         self.assertEqual(item['scope'],'company');self.assertEqual(item['company_count'],1)
         self.assertIsInstance(item['display_weight'],float)

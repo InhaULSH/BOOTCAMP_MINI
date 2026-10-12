@@ -1,7 +1,7 @@
 """Resolve unchanged filing assets across financial releases, without DB writes.
 
 Only validated releases with BOTH the same vector SQLite and FAISS hashes
-may share vectors/source XML. Financial facts always use the current release.
+may share vectors/source XML. Financial facts use the selected physical release, independently of asset reuse.
 """
 import re
 from . import db

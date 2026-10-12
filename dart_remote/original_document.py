@@ -99,7 +99,11 @@ def choose_occurrence(quote,summary,section,heading,candidates):
     return -max(eligible)[1]
 
 def render(raw,quote,section='',heading='',summary=''):
-    root,full,repairs=parsed(raw);needle=normalized(quote)
+    try:root,full,repairs=parsed(raw)
+    except (ValueError,ET.ParseError):
+        from .partial_document import view
+        return view(raw,quote,section,heading,summary)
+    needle=normalized(quote)
     positions=[m.start() for m in re.finditer(re.escape(needle),full)] if needle else []
     if len(positions)>1:
         # The same business introduction often also appears in company overview
@@ -195,7 +199,7 @@ def render(raw,quote,section='',heading='',summary=''):
         return '<'+tag+attrs+'>'+content+'</'+tag+'>'
     body=node(root)
     body='<p class="source-range">'+escape(scope[2]+' · 근거 주변 최대 2,000자, 포함된 표는 전체 표시')+'</p>'+body
-    style='''body{font:15px/1.8 "Malgun Gothic",sans-serif;color:#253046;margin:28px;background:#fff}h2,h3{color:#182b49;margin:32px 0 14px}p{margin:10px 0;white-space:pre-wrap}table{border-collapse:collapse;max-width:100%;margin:20px 0;font-size:13px}td,th{border:1px solid #b9c3cd;padding:7px 10px;white-space:pre-wrap}th{background:#f1f4f7}mark{background:#fff0ac;color:inherit;border-radius:3px;padding:2px 0}'''
+    style='''body{font:15px/1.8 "Malgun Gothic",sans-serif;color:#253046;margin:28px;background:#fff}h2,h3{color:#182b49;margin:32px 0 14px}p{margin:10px 0;white-space:pre-wrap}table{border-collapse:collapse;max-width:100%;margin:20px 0;font-size:13px}td,th{border:1px solid #b9c3cd;padding:7px 10px;white-space:pre-wrap}th{background:#f1f4f7}mark{background:#e3edf9;color:inherit;border-radius:3px;padding:2px 0}'''
     html='<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"><style>'+style+'</style></head><body>'+body+'</body></html>'
     return dict(document_html=html,original_xml_sha256=hashlib.sha256(raw).hexdigest(),highlight_matched=target is not None,
         original_note='' if target else '동일 문장이 여러 곳에 있거나 XML 원문과 일치하는 위치를 확인하지 못해 강조를 생략했습니다.',xml_repairs=repairs)
@@ -208,7 +212,7 @@ def document_view(receipt,quote,section='',heading='',summary='',chunk_id=None,d
         # Mapping/version/hash checks remain live, even when HTML is reused.
         raw=read_xml(receipt,chunk_id,data_version)
         key=(hashlib.sha256(raw).hexdigest(),quote,section,heading,summary)
-        return _rendered_documents.get(key,'html-v1',lambda:render(raw,quote,section,heading,summary),
+        return _rendered_documents.get(key,'html-v2-local-verification',lambda:render(raw,quote,section,heading,summary),
             size=lambda value:len(value['document_html'].encode('utf-8')),
             accept=lambda value:value.get('highlight_matched',False))
     except (FileNotFoundError,ValueError,RuntimeError,ET.ParseError) as error:

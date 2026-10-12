@@ -10,13 +10,13 @@ from . import db, artifacts
 from .original_document import parsed
 from .asset_versions import source_versions,version_filter
 
-VERSION='xml-financial-v3-capex'
+VERSION='xml-financial-v4-cashflow-alias'
 END_MONTH={'Q1':3,'H1':6,'Q3':9,'FY':12}
 ALIASES={
     'revenue':('매출액','수익(매출액)','영업수익','수익'),
     'operating_income':('영업이익','영업이익(손실)','영업손익','영업손실'),
     'inventory':('재고자산',),
-    'operating_cashflow':('영업활동현금흐름','영업활동으로인한현금흐름'),
+    'operating_cashflow':('영업활동현금흐름','영업활동으로인한현금흐름','영업활동순현금흐름'),
     'capex':('유형자산의취득','유형자산취득','유형자산의취득으로인한현금유출'),
 }
 DATE=r'(\d{4})\s*[.년/-]\s*(\d{1,2})\s*[.월/-]\s*(\d{1,2})\s*일?'
@@ -164,7 +164,7 @@ def source_view(row):
     for cells in row['original_table']:
         body+='<tr>'
         for cell in cells:
-            style=' style="background:#fff1aa"' if (cell['row'],cell['column'])==(row['row_index'],row['column_index']) else ''
+            style=' style="background:#e3edf9"' if (cell['row'],cell['column'])==(row['row_index'],row['column_index']) else ''
             body+=f'<td rowspan="{cell["rowspan"]}" colspan="{cell["colspan"]}"{style}>'+escape(cell['text'])+'</td>'
         body+='</tr>'
     body+='</table>'

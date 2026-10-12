@@ -4,11 +4,11 @@ import unittest
 
 import pandas as pd
 
-from dart_remote.dart_company_signal_wordcloud import (
+from .dart_company_signal_wordcloud import (
     _context_signature,
     _score_context_diversity,
 )
-from dart_remote.signal_keyword_rules import GENERIC_VOCABULARY
+from .signal_keyword_rules import GENERIC_VOCABULARY
 
 
 class CompanyContextDiversityTests(unittest.TestCase):

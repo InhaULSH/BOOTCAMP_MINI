@@ -54,7 +54,7 @@ class AssetVersionTests(unittest.TestCase):
     def test_ordinary_graph_does_not_rebuild_missing_q4(self):
         from types import SimpleNamespace
         from snapdart.ui_project import quarter_rows
-        repo=SimpleNamespace(financial=lambda code,y,t,basis,kind:dict(revenue=None,operating_income=None,capex=None,operating_cashflow=None))
+        repo=SimpleNamespace(facts=lambda *args:[],financial=lambda code,y,t,basis,kind:dict(revenue=None,operating_income=None,capex=None,operating_cashflow=None))
         rows=quarter_rows(repo,dict(code='c',history=[dict(year=2025,basis='OFS')]),[2025])
         self.assertEqual(len(rows),4);self.assertIsNone(rows[-1]['revenue']);self.assertEqual(rows[-1]['basis'],'OFS')
     def test_snapshot_accepts_old_hash_equivalent_vector_and_rejects_other(self):

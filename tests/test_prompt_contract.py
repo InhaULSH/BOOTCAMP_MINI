@@ -1,4 +1,5 @@
 """Prompt fidelity and citation validation without calling a model API."""
+import os
 import copy
 import sys
 import tempfile
@@ -10,6 +11,7 @@ from unittest.mock import patch
 from snapdart.data_access import pipeline, prompts
 
 
+@patch.dict(os.environ, {'INSIGHT_VALIDATION_MODE': 'strict'})
 class PromptContractTests(unittest.TestCase):
     def generate(self, sentences, filing_count=2, financial_values=None, company_scope=False, keyword=None):
         captured = {}
@@ -170,20 +172,14 @@ class PromptContractTests(unittest.TestCase):
         self.assertEqual(result['prompt_version'],prompts_old.VERSION)
 
     def test_current_definition_and_deploy_match(self):
-        import runpy
+        import runpy,re
         root=Path(__file__).resolve().parents[1]
         deployed=runpy.run_path(str(root/'deploy/cloudapp/prompts.py'))
-        definition=(root/'docs/4차구상/프롬프트_정의서_수정.txt').read_text(encoding='utf-8-sig')
+        definition=(root/'docs/4차구상/프롬프트_정의서_new.md').read_text(encoding='utf-8-sig')
+        normalize=lambda text:re.sub(r'\s+',' ',text).strip()
         for key in ('COMMON','INSIGHT','COMPANY','KEYWORD'):
             self.assertEqual(getattr(prompts,key),deployed[key])
-            original=getattr(prompts,key)
-            # The user's newer instruction explicitly permits one grounded insight sentence.
-            original=original.replace('적격 근거로 뒷받침되는 내용만 1-3문장으로 작성하세요. 1문장으로 충분하면 추가하지 마세요.','2-3문장으로 작성하세요.')
-            original=original.replace('적격 근거가 있는 1-3문장의 짧은 한 문단으로 핵심 현황이나 변화를 먼저 설명하세요. 1문장으로 충분하면 추가하지 마세요.','2-3문장의 짧은 한 문단으로 핵심 현황이나 변화를 먼저 설명하세요.')
-            original=original.replace('용어 해설과 공시에서 확인한 내용을 합쳐 1-2문장으로 작성하세요.','용어 해설과 공시에서 확인한 내용을 합쳐 2문장으로 작성하세요.')
-            original=original.replace('한 문장이면 용어의 뜻과 확인된 사업 현황이나 동향을 자연스럽게 함께 설명하세요. 두 문장이 이해하기 쉬우면 첫 문장은 용어의 뜻, 두 번째 문장은 확인된 사업 현황이나 동향을 설명하세요.','첫 문장은 용어의 뜻을, 두 번째 문장은 확인된 사업 현황이나 동향을 설명하세요.')
-            original=original.replace('각 문장을 적격 공시 근거로 뒷받침하세요. 한 문장으로 충분하면 추가하지 마세요. 용어와 관련 사업 현황을 설명할 적격 근거가 없으면 sentences=[]와 insufficient_reason을 반환하세요.','각 문장을 적격 공시 근거로 뒷받침하세요. 2문장을 만들 근거가 부족하면 sentences=[]와 insufficient_reason을 반환하세요.')
-            self.assertIn(original,definition)
+            self.assertIn(normalize(getattr(prompts,key)),normalize(definition))
 
     def test_money_sign_and_arbitrary_amount_are_rejected(self):
         for text in ('영업이익은 1,234원입니다.','영업이익은 -1,200원입니다.'):
@@ -216,7 +212,7 @@ if __name__ == '__main__':
     def test_definition_and_deploy_profiles_match(self):
         import runpy
         root=Path(__file__).resolve().parents[1]
-        text=(root/'docs/4차구상/프롬프트_정의서_수정.txt').read_text(encoding='utf-8-sig')
+        text=(root/'docs/4차구상/프롬프트_정의서_new.txt').read_text(encoding='utf-8-sig')
         deployed=runpy.run_path(str(root/'deploy/cloudapp/prompts.py'))
         for key in ('COMMON','INSIGHT','COMPANY','KEYWORD'):
             self.assertIn(getattr(prompts,key),text)

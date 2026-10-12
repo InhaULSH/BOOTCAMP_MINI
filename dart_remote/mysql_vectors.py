@@ -35,11 +35,10 @@ def backend():
     return value
 
 def contract():
-    versions = db.rows('SELECT * FROM data_versions WHERE is_current=1')
-    if len(versions) != 1 or not versions[0]['validated']:
-        raise RuntimeError('동기화 검증이 완료된 현재 데이터 버전이 필요합니다.')
-    version = versions[0]
-    metas = db.rows('SELECT * FROM embedding_metadata WHERE is_current=1 AND index_version=:i', {'i': version['index_version']})
+    from .release_selection import resolve
+    selection=resolve();version=selection['selected']
+    current='' if selection['explicit'] else 'is_current=1 AND '
+    metas = db.rows('SELECT * FROM embedding_metadata WHERE '+current+'index_version=:i', {'i': version['index_version']})
     if len(metas) != 1:
         raise RuntimeError('현재 임베딩 메타데이터가 정확히 하나여야 합니다.')
     meta = metas[0]
@@ -52,17 +51,25 @@ def contract():
             raise ValueError('현재 버전과 임베딩 메타데이터의 내용 해시가 다릅니다.')
     pairs=compatible_pairs(version)
     global _integrity
-    signature = (os.getenv('MYSQL_HOST'), os.getenv('MYSQL_PORT'), os.getenv('MYSQL_DATABASE'), os.getenv('CLOUD_SQL_INSTANCE'), version['data_version'], version['index_version'], meta['faiss_sha256'], meta.get('sqlite_sha256'), meta['searchable_vector_count'],tuple(map(tuple,pairs)))
-    # Version/validated state are read every time; full join integrity is checked
-    # at most every 30 seconds, and immediately for any new snapshot contract.
+    signature = (os.getenv('MYSQL_HOST'), os.getenv('MYSQL_PORT'), os.getenv('MYSQL_DATABASE'), os.getenv('CLOUD_SQL_INSTANCE'), selection['signature'],version['data_version'], version['index_version'], meta['faiss_sha256'], meta.get('sqlite_sha256'), meta['searchable_vector_count'],tuple(map(tuple,pairs)))
+    # During a build, recheck metadata each time but reuse successful full joins
+    # for the same signature. Interactive searches keep the 30-second policy.
+    from . import analysis_validation as validation
     now = time.monotonic()
-    if _integrity is None or _integrity[0] != signature or now - _integrity[1] >= 30:
+    if validation.active():
+        def full_check():
+            print('검증: 청크·벡터 전체 연결 확인 시작',flush=True)
+            _check_integrity(version,meta,pairs)
+            print('검증: 청크·벡터 전체 연결 확인 완료',flush=True)
+        validation.once('vector-integrity',signature,full_check)
+    elif _integrity is None or _integrity[0] != signature or now - _integrity[1] >= 30:
         _check_integrity(version, meta, pairs)
         _integrity = (signature, now)
     source = {k: os.getenv(k, '') for k in ('MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_DATABASE', 'CLOUD_SQL_INSTANCE')}
     key = dict(source=source, data_version=version['data_version'], index_version=version['index_version'],
                model=MODEL, revision=REVISION, dimensions=DIM, count=meta['searchable_vector_count'],
-               sqlite_sha=meta.get('sqlite_sha256'), faiss_sha=meta.get('faiss_sha256'), asset_pairs=pairs,format=2)
+               sqlite_sha=meta.get('sqlite_sha256'), faiss_sha=meta.get('faiss_sha256'), asset_pairs=pairs,format=3,
+               registered_data_version=selection['registered']['data_version'],release_selection_signature=selection['signature'])
     return key
 
 def _check_integrity(version, meta, pairs):

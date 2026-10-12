@@ -11,7 +11,7 @@ class SignalTests(unittest.TestCase):
         config=SignalConfig('KRX_SEMI',years=(2021,2022,2023,2024,2025))
         counts={'HBM':{2021:0,2022:2,2023:2,2024:2,2025:2}}
         r=_result_from_counts(counts,{'HBM':{'a':1,'b':1}},{'a':5,'b':5},pd.Series({y:10 for y in config.years}),config,2)
-        self.assertAlmostEqual(r.iloc[0].change_raw,0.4/2.0*0.2)
+        self.assertAlmostEqual(r.iloc[0].change_raw,0.4**3*0.2)
         self.assertEqual(display(r,config)[0]['years'],list(config.years))
 
     def test_one_or_two_years_are_supported(self):
@@ -21,7 +21,7 @@ class SignalTests(unittest.TestCase):
             self.assertAlmostEqual(r.iloc[0].change_raw,expected)
 
     def test_chunk_share_scoring_and_penalties(self):
-        config=SignalConfig('KRX_SEMI')
+        config=SignalConfig('KRX_SEMI',years=(2023,2024,2025))
         counts={'HBM':{2023:1,2024:2,2025:4},'DRAM':{2023:4,2024:3,2025:2},'SSD':{2025:2}}
         companies={'HBM':{'a':3,'b':1},'DRAM':{'a':1,'b':1},'SSD':{'a':2}}
         r=_result_from_counts(counts,companies,{c:2 for c in "abcde"},pd.Series({2023:10,2024:10,2025:10}),config,5)
@@ -49,7 +49,7 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(add_display_weights(tied).display_weight.tolist(),[100.,65.,30.])
     def test_company_uses_dedicated_scorer(self):
         from dart_remote.dart_company_signal_wordcloud import CompanySignalConfig,_result_from_counts as company_counts
-        config=CompanySignalConfig('a',sector_index_code='KRX_SEMI')
+        config=CompanySignalConfig('a',sector_index_code='KRX_SEMI',years=(2023,2024,2025))
         r=company_counts({'HBM':{2025:2}},pd.Series({2023:2,2024:2,2025:2}),config)
         self.assertEqual(len(r),1)
         self.assertNotIn('concentration_penalty',r.columns)

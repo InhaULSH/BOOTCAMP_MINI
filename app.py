@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from snapdart.config import ROOT
 from dart_remote.runtime_cache import request_scope
 from dart_remote.http_assets import public_asset,accepts_gzip
+from dart_remote.ui_version import page_asset,ui_version
 
 ROUTES = {
     '/': ('web/index.html', 'text/html; charset=utf-8'),
@@ -14,10 +15,11 @@ ROUTES = {
 }
 for name in ('index.html','industry.html','company.html'):
     ROUTES['/'+name]=('web/'+name,'text/html; charset=utf-8')
-for name in ('app.js','data.js','charts.js','sources.js','home.css','analysis.css','service.css'):
+for name in ('app.js','data.js','charts.js','sources.js','sector-tiles.js','home.css','analysis.css','service.css','ui-new.css','ui-new.js'):
     ROUTES['/assets/'+name]=('web/assets/'+name,'text/css' if name.endswith('.css') else 'text/javascript')
 for name in ('NanumGothic-Regular.ttf','NanumGothic-Bold.ttf'):
     ROUTES['/assets/fonts/'+name]=('web/assets/fonts/'+name,'font/ttf')
+ROUTES['/assets/fonts/PretendardVariable.woff2']=('web/assets/fonts/PretendardVariable.woff2','font/woff2')
 
 class Handler(BaseHTTPRequestHandler):
     @request_scope
@@ -116,7 +118,8 @@ class Handler(BaseHTTPRequestHandler):
             except RuntimeError:return self.send_error(503,'Report or search service unavailable')
             return self.send_json(value)
         else:
-            data,etag,compressed=public_asset(path,accepts_gzip(self.headers.get('Accept-Encoding','')))
+            reader=page_asset if path.suffix=='.html' else public_asset
+            data,etag,compressed=reader(path,accepts_gzip(self.headers.get('Accept-Encoding','')))
             if etag in [x.strip() for x in self.headers.get('If-None-Match','').split(',')]:
                 self.send_response(304);self.send_header('ETag',etag);self.send_header('Cache-Control','no-cache')
                 self.send_header('Vary','Accept-Encoding');self.end_headers();return
@@ -134,10 +137,13 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8501)
+    parser.add_argument('--ui-version',choices=['old','new'],default=os.getenv('UI_VERSION','old'),help='old: 기존 화면, new: 새 디자인 화면 (분석 버전과 별개)')
     parser.add_argument('--sector',help='이 섹터만 서비스에 표시 (예: 반도체)')
     parser.add_argument('--no-market-refresh',action='store_true',help='저장된 시세로 시작; 외부 시세 조회 생략')
     parser.add_argument('--prompt-version',choices=['new','new2','old'],default=os.getenv('REPORT_PROMPT_VERSION','new'),help='표시할 분석 결과의 프롬프트 버전')
     args = parser.parse_args()
+    os.environ['UI_VERSION']=args.ui_version
+    ui_version()
     os.environ['REPORT_PROMPT_VERSION']=args.prompt_version
     if args.sector:
         os.environ['SNAPDART_SECTORS']=args.sector

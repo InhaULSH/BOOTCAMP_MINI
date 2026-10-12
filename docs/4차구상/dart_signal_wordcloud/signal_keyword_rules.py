@@ -46,7 +46,7 @@ DOCUMENT_FIELD_MODIFIERS = frozenset({
 DOCUMENT_FIELD_HEADS = frozenset({
     "상대방", "기간", "경과", "방법", "조직", "효과", "상황", "시간", "가동", "수준",
     "체결", "종료", "종료일", "보조금", "유형", "장치", "업체", "당국",
-    "가능", "근거", "부문",
+    "가능", "근거", "부문", "설비",
 })
 
 # Standard statement/account labels are different from banking concepts such
@@ -59,6 +59,16 @@ ACCOUNTING_LABEL_HEADS = frozenset({
     "자산", "부채", "손익", "가치", "이자", "순이익", "위험", "회피", "흐름",
     "금융", "차입금",
 })
+
+# Low-information two-token roles. These are semantic classes rather than
+# company- or keyword-specific exceptions: promotional superlatives, generic
+# contract procedure, and untargeted financing language.
+PROMOTIONAL_MODIFIERS = frozenset({"세계", "업계", "국내"})
+PROMOTIONAL_HEADS = frozenset({"최초", "최고"})
+CONTRACT_PROCEDURE_MODIFIERS = frozenset({"지급", "반환", "상호"})
+CONTRACT_PROCEDURE_HEADS = frozenset({"의무", "협의"})
+GENERIC_FINANCE_MODIFIERS = frozenset({"자금", "재원"})
+GENERIC_FINANCE_HEADS = frozenset({"조달", "운용"})
 
 ABSTRACT_MODIFIERS = frozenset({"환경", "일정", "부가", "수준"})
 ABSTRACT_HEADS = frozenset({"변화", "수준", "가치", "이상"})
@@ -221,8 +231,10 @@ SECTOR_VOCABULARIES: Mapping[str, SectorVocabulary] = {
 }
 
 
-# Shared disclosure categories: three hard exclusions, a two-point general-
-# business penalty, and promotional labels for inspection only.
+# Shared disclosure noise categories. Production hard exclusions are selected
+# explicitly below; "일반 경영" remains a two-point penalty category.
+# Corpus-aware organization/person/IR-event checks live in the company
+# extractor because they require neighbouring text rather than keyword text.
 GENERIC_NOISE_PATTERNS: Mapping[str, tuple[str, ...]] = {
     "통화/환율": (
         r"^(?:USD|JPY|KRW|EUR|CNY|GBP|CHF|CAD|AUD|HKD|SGD)$",
@@ -233,6 +245,28 @@ GENERIC_NOISE_PATTERNS: Mapping[str, tuple[str, ...]] = {
     "회계·보고서 관용": (
         r"(?:재고 자산|매출액|재무|회계|충당금|감가상각|장부가액|보고기간)",
     ),
+    "공시 메타": (
+        r"(?:기업\s*공시|공시)\s*서식",
+        r"서식\s*(?:작성|기준)",
+        r"기재\s*(?:예정|생략)",
+        r"(?:분\s*[ㆍ·ᆞ]\s*반기|분반기)",
+        r"분석\s*의견",
+    ),
+    "특허 법률 문구": (
+        r"(?i)\b(?:comprising|thereof|wherein)\b",
+        r"(?i)\b(?:inhibitors?|compositions?)\s+and\s+methods?\b",
+    ),
+    "문서성 표현": (
+        r"^(?:기존\s*대비|기저\s*효과)$",
+        r"^[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도|시|군|구)\s*소재$",
+    ),
     "일반 경영": (r"(?:부가 가치|자금 조달|수주 상황|경영 전략|사업 계획)",),
 }
-PRODUCTION_GENERIC_NOISE_CATEGORIES = frozenset({"통화/환율", "기간 비교", "회계·보고서 관용"})
+PRODUCTION_GENERIC_NOISE_CATEGORIES = frozenset({
+    "통화/환율",
+    "기간 비교",
+    "회계·보고서 관용",
+    "공시 메타",
+    "특허 법률 문구",
+    "문서성 표현",
+})

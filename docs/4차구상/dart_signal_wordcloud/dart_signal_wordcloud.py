@@ -1,7 +1,7 @@
 """Build a KRX-sector disclosure word cloud from searchable report chunks.
 
 Extract and normalize chunk-level concepts, filter candidates, score the
-three-year signals, then return final-score Top-N. Spread combines 60% company
+configured reporting periods, then return final-score Top-N. Spread combines 60% company
 coverage with 40% normalized company mention entropy. Final score is
 0.50*Current + 0.30*Change + 0.20*Spread, less
 min(15, max(0, (max_company_share - 0.50)*30)) and 2 for general-business
@@ -24,15 +24,17 @@ from dart_db_client import query
 from .signal_keyword_rules import (
     ABSTRACT_HEADS, ABSTRACT_MODIFIERS, ACCOUNTING_LABEL_HEADS,
     ACCOUNTING_LABEL_MODIFIERS, ALLOWED_SECTION_PREFIXES, ALLOWED_SUBSECTION_PHRASES,
+    CONTRACT_PROCEDURE_HEADS, CONTRACT_PROCEDURE_MODIFIERS,
     DOCUMENT_FIELD_HEADS, DOCUMENT_FIELD_MODIFIERS,
+    GENERIC_FINANCE_HEADS, GENERIC_FINANCE_MODIFIERS,
     GENERIC_NOISE_PATTERNS, GENERIC_VOCABULARY, LOW_INFORMATION_PHRASE_TERMS,
     MEASUREMENT_OR_TABLE_TOKENS, PRODUCTION_GENERIC_NOISE_CATEGORIES, SECTOR_VOCABULARIES,
-    STOPWORDS, SectorVocabulary,
+    PROMOTIONAL_HEADS, PROMOTIONAL_MODIFIERS, STOPWORDS, SectorVocabulary,
 )
 
 
 REPORT_TYPES = ("Q1", "H1", "Q3", "FY")
-DEFAULT_ANALYSIS_YEARS = (2023, 2024, 2025)
+DEFAULT_ANALYSIS_YEARS = (2023, 2024, 2025, 2026)
 DEFAULT_TOP_COMPANIES = 5
 DEFAULT_WORDCLOUD_TOP_N = 12
 DEFAULT_PAGE_SIZE = 64
@@ -58,7 +60,7 @@ class SignalConfig:
     """Reusable analysis settings for one KRX sector index."""
 
     index_code: str
-    years: tuple[int, int, int] = DEFAULT_ANALYSIS_YEARS
+    years: tuple[int, ...] = DEFAULT_ANALYSIS_YEARS
     top_companies: int = DEFAULT_TOP_COMPANIES
     top_n: int = DEFAULT_WORDCLOUD_TOP_N
     report_types: tuple[str, ...] = REPORT_TYPES
@@ -68,8 +70,8 @@ class SignalConfig:
     vocabulary: SectorVocabulary | None = None
 
     def __post_init__(self) -> None:
-        if len(self.years) != 3 or tuple(sorted(self.years)) != self.years:
-            raise ValueError("years must contain three ascending years, e.g. (2023, 2024, 2025)")
+        if len(self.years) < 3 or tuple(sorted(self.years)) != self.years:
+            raise ValueError("years must contain at least three ascending years")
         if self.top_companies < 1 or self.top_n < 1 or self.tokenizer_batch_size < 1:
             raise ValueError("top_companies, top_n, and tokenizer_batch_size must be positive")
         if self.vocabulary is None:
@@ -100,7 +102,7 @@ def get_top_companies(index_code: str, limit: int = DEFAULT_TOP_COMPANIES) -> pd
 
 
 def _analysis_where(config: SignalConfig, companies: pd.DataFrame) -> tuple[str, list[object]]:
-    # TODO: validate other sectors' DB sections before making this policy injectable.
+    # Production uses one shared disclosure-section policy for every sector.
     codes = list(companies["corp_code"])
     code_marks = ", ".join(["%s"] * len(codes))
     year_marks = ", ".join(["%s"] * len(config.years))
@@ -161,6 +163,62 @@ def apply_industry_hot_flags(result: pd.DataFrame, top_n: int) -> pd.DataFrame:
     return result
 
 
+def _change_raw_from_comparable_periods(
+    result: pd.DataFrame,
+    totals: pd.Series,
+    years: tuple[int, ...],
+    period_counts: dict[str, dict[tuple[int, str], int]] | None = None,
+    period_totals: dict[tuple[int, str], int] | None = None,
+    latest_report_types: tuple[str, ...] = (),
+) -> pd.Series:
+    """Blend annual changes and the newest like-for-like reporting period.
+
+    Completed years retain their annual comparisons. For an incomplete newest
+    year, only its available report types are compared with the same report
+    types of the preceding year. The established 40/60 earlier/recent blend is
+    applied successively. Missing periods are skipped, never treated as zero.
+    """
+    deltas: list[pd.Series] = []
+    completed_years = years[:-1]
+    for start, end in zip(completed_years, completed_years[1:]):
+        if end == start + 1 and totals.get(start, 0) > 0 and totals.get(end, 0) > 0:
+            deltas.append(result[f"rate_{end}"] - result[f"rate_{start}"])
+
+    previous, latest = years[-2:]
+    if period_counts is None or period_totals is None or not latest_report_types:
+        if totals.get(previous, 0) > 0 and totals.get(latest, 0) > 0:
+            deltas.append(result[f"rate_{latest}"] - result[f"rate_{previous}"])
+    else:
+        previous_total = sum(period_totals.get((previous, report_type), 0)
+                             for report_type in latest_report_types)
+        latest_total = sum(period_totals.get((latest, report_type), 0)
+                           for report_type in latest_report_types)
+        if previous_total > 0 and latest_total > 0:
+            previous_counts = result["keyword"].map(
+                lambda word: sum(period_counts.get(word, {}).get((previous, report_type), 0)
+                                 for report_type in latest_report_types)
+            )
+            latest_counts = result["keyword"].map(
+                lambda word: sum(period_counts.get(word, {}).get((latest, report_type), 0)
+                                 for report_type in latest_report_types)
+            )
+            result[f"comparable_count_{previous}"] = previous_counts
+            result[f"comparable_count_{latest}"] = latest_counts
+            result[f"comparable_rate_{previous}"] = previous_counts / previous_total
+            result[f"comparable_rate_{latest}"] = latest_counts / latest_total
+            deltas.append(
+                result[f"comparable_rate_{latest}"]
+                - result[f"comparable_rate_{previous}"]
+            )
+
+    if not deltas:
+        raise ValueError("No consecutive comparable period is available for ChangeScore")
+    combined = deltas[0]
+    for delta in deltas[1:]:
+        combined = EARLIER_CHANGE_WEIGHT * combined + RECENT_CHANGE_WEIGHT * delta
+    return combined
+
+
 def _result_from_counts(
     counts: dict[str, dict[int, int]],
     latest_company_counts: dict[str, dict[str, int]],
@@ -168,6 +226,9 @@ def _result_from_counts(
     totals: pd.Series,
     config: SignalConfig,
     company_total: int,
+    period_counts: dict[str, dict[tuple[int, str], int]] | None = None,
+    period_totals: dict[tuple[int, str], int] | None = None,
+    latest_report_types: tuple[str, ...] = (),
 ) -> pd.DataFrame:
     """Filter chunk-level candidates and calculate the production scores."""
     rows = [{"keyword": word, **{f"count_{year}": year_counts.get(year, 0) for year in config.years}}
@@ -178,12 +239,11 @@ def _result_from_counts(
     for year in config.years:
         result[f"total_chunks_{year}"] = int(totals[year])
         result[f"rate_{year}"] = result[f"count_{year}"] / totals[year]
-    first, middle, latest = config.years
+    latest = config.years[-1]
     result = result[result[f"count_{latest}"] >= config.min_latest_chunk_count].copy()
     result["current_raw"] = result[f"rate_{latest}"]
-    result["change_raw"] = (
-        EARLIER_CHANGE_WEIGHT * (result[f"rate_{middle}"] - result[f"rate_{first}"])
-        + RECENT_CHANGE_WEIGHT * (result[f"rate_{latest}"] - result[f"rate_{middle}"])
+    result["change_raw"] = _change_raw_from_comparable_periods(
+        result, totals, config.years, period_counts, period_totals, latest_report_types,
     )
     result["company_count"] = result["keyword"].map(lambda word: len(latest_company_counts.get(word, {})))
     result = result[result["company_count"] >= MIN_LATEST_COMPANIES].copy()
@@ -242,14 +302,31 @@ def score_database_keywords(config: SignalConfig, companies: pd.DataFrame,
     """Extract and score the configured DB corpus in bounded text pages."""
     where, params = _analysis_where(config, companies)
     totals_frame = query(
-        f"SELECT year, COUNT(*) AS total_chunks FROM chunk_metadata WHERE {where} GROUP BY year", params
+        f"SELECT year, report_type, COUNT(*) AS total_chunks FROM chunk_metadata "
+        f"WHERE {where} GROUP BY year, report_type", params
     )
-    totals = totals_frame.set_index("year")["total_chunks"].reindex(config.years, fill_value=0)
+    totals = totals_frame.groupby("year")["total_chunks"].sum().reindex(config.years, fill_value=0)
     if (totals == 0).any():
         raise ValueError(f"No searchable chunks available for year(s): {list(totals[totals == 0].index)}")
 
     extractor = KeywordExtractor(companies["corp_name"], config.extra_stopwords, config.vocabulary)
     latest_year = config.years[-1]
+    previous_year = config.years[-2]
+    latest_report_types = tuple(
+        report_type for report_type in config.report_types
+        if not totals_frame.loc[
+            (totals_frame["year"] == latest_year)
+            & (totals_frame["report_type"] == report_type)
+        ].empty
+        and not totals_frame.loc[
+            (totals_frame["year"] == previous_year)
+            & (totals_frame["report_type"] == report_type)
+        ].empty
+    )
+    period_totals = {
+        (int(row.year), str(row.report_type)): int(row.total_chunks)
+        for row in totals_frame.itertuples(index=False)
+    }
     latest_company_frame = query(
         "SELECT corp_code, COUNT(*) AS total_chunks FROM chunk_metadata "
         f"WHERE {where} AND year = %s GROUP BY corp_code",
@@ -261,11 +338,12 @@ def score_database_keywords(config: SignalConfig, companies: pd.DataFrame,
         for row in latest_company_frame.itertuples(index=False)
     })
     counts: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    period_counts: dict[str, dict[tuple[int, str], int]] = defaultdict(lambda: defaultdict(int))
     latest_company_counts: dict[str, Counter[str]] = defaultdict(Counter)
     last_vector_id = -1
     while True:
         page = query(
-            "SELECT vector_id, corp_code, year, chunk_text FROM chunk_metadata "
+            "SELECT vector_id, corp_code, year, report_type, chunk_text FROM chunk_metadata "
             f"WHERE {where} AND vector_id > %s ORDER BY vector_id LIMIT %s",
             [*params, last_vector_id, int(page_size)],
         )
@@ -276,12 +354,13 @@ def score_database_keywords(config: SignalConfig, companies: pd.DataFrame,
         ):
             for keyword in keywords:
                 counts[keyword][int(row.year)] += 1
+                period_counts[keyword][(int(row.year), str(row.report_type))] += 1
                 if row.year == latest_year:
                     latest_company_counts[keyword][str(row.corp_code)] += 1
         last_vector_id = int(page["vector_id"].iloc[-1])
     return _result_from_counts(
         counts, latest_company_counts, latest_company_chunk_totals,
-        totals, config, len(companies),
+        totals, config, len(companies), period_counts, period_totals, latest_report_types,
     )
 
 
@@ -368,6 +447,10 @@ def _is_informative_phrase(phrase: str,
         if ((left in DOCUMENT_FIELD_MODIFIERS and right in DOCUMENT_FIELD_HEADS)
                 or (left in ACCOUNTING_LABEL_MODIFIERS and right in ACCOUNTING_LABEL_HEADS)
                 or (left in ABSTRACT_MODIFIERS and right in ABSTRACT_HEADS)
+                or (left in PROMOTIONAL_MODIFIERS and right in PROMOTIONAL_HEADS)
+                or (left in CONTRACT_PROCEDURE_MODIFIERS
+                    and right in CONTRACT_PROCEDURE_HEADS)
+                or (left in GENERIC_FINANCE_MODIFIERS and right in GENERIC_FINANCE_HEADS)
                 or (left in vocabulary.broad_sector_terms and right == "산업")):
             return False
     # Generic action/status words at either end describe document boilerplate,
@@ -388,7 +471,7 @@ class KeywordExtractor:
             raise ImportError(
                 "kiwipiepy is required. Run: python -m pip install -r requirements.txt"
             ) from exc
-        # One worker keeps memory bounded when processing a large three-year
+        # One worker keeps memory bounded when processing a large multi-year
         # sector corpus.  This is an offline job, so predictability wins.
         self.kiwi = Kiwi(num_workers=1)
         self.vocabulary = vocabulary
@@ -479,7 +562,7 @@ def score_keywords(chunks: pd.DataFrame, config: SignalConfig, companies: pd.Dat
     appearances: list[tuple[int, str, str, str]] = []
     selected = chunks[["chunk_id", "corp_code", "year", "chunk_text"]]
     # Keep the Kiwi input bounded.  Sending every disclosure text to Kiwi in
-    # one call can require more than a gigabyte of RAM for a three-year sector.
+    # one call can require more than a gigabyte of RAM for a multi-year sector.
     for start in range(0, len(selected), config.tokenizer_batch_size):
         batch = selected.iloc[start:start + config.tokenizer_batch_size]
         extracted = extractor.extract_many(batch["chunk_text"].fillna(""))
@@ -650,7 +733,7 @@ def main() -> None:
     """Run the production word cloud and optionally inspect one keyword."""
     parser = argparse.ArgumentParser(description="Score KRX disclosure keyword signals")
     parser.add_argument("index_code", help="KRX index code, e.g. KRX_SEMI")
-    parser.add_argument("--years", nargs=3, type=int, default=DEFAULT_ANALYSIS_YEARS)
+    parser.add_argument("--years", nargs="+", type=int, default=DEFAULT_ANALYSIS_YEARS)
     parser.add_argument("--top-n", type=int, default=DEFAULT_WORDCLOUD_TOP_N)
     parser.add_argument("--top-companies", type=int, default=DEFAULT_TOP_COMPANIES)
     parser.add_argument("--keyword", help="inspect an exact normalized keyword and its company chunk counts")

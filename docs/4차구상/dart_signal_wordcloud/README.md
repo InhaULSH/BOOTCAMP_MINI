@@ -1,145 +1,49 @@
-# DART 워드클라우드 production
+# 변경된 공시 신호 워드클라우드와 서비스 연결
 
-산업 및 기업 공시에서 키워드를 추출·평가해 워드클라우드용 Top-N 결과를 만드는 production 모듈입니다. DB 연결과 공통 환경 설정은 프로젝트 루트의 `README.md`를 참고합니다.
+## 이 폴더의 역할
 
-## 프로젝트 구조
+이 폴더는 변경 제안으로 전달된 원본 Python 코드와 테스트를 보관한다. 실제 웹 서비스는 이 폴더를 직접 import하지 않고, 내용을 반영한 `dart_remote` 패키지를 사용한다. 배포 버전에는 `deploy/dart_remote`로 같은 엔진을 제공한다. 전달된 Python 원본은 보존하며 서비스에 필요한 연결 변경은 실행 패키지에 적용했다.
 
-| 파일 | 역할 |
-|---|---|
-| `dart_signal_wordcloud.py` | KRX 섹터 대표기업 공시를 이용하는 산업 워드클라우드 scorer 및 CLI |
-| `dart_company_signal_wordcloud.py` | 개별 기업 공시를 이용하는 기업 워드클라우드 scorer 및 CLI |
-| `signal_keyword_rules.py` | 공통 후보 규칙과 섹터별 `SectorVocabulary` 설정 |
+파일은 `__init__.py`, 산업 엔진 `dart_signal_wordcloud.py`, 기업 엔진 `dart_company_signal_wordcloud.py`, 어휘 규칙 `signal_keyword_rules.py`, 산업 확산·불꽃/기업 후보/기업 문맥 다양성/산업 어휘 분리의 테스트 4개 및 이 README로 구성된다. `__pycache__`의 pyc는 이전 Python 실행에서 생긴 캐시이며 실행 코드 반영의 기준으로 사용하지 않는다.
 
-두 scorer는 프로젝트 루트의 `dart_db_client.query`를 사용합니다. 필요한 패키지는 루트 `requirements.txt`로 설치합니다. Kiwi는 `kiwipiepy` 패키지 설치만으로 동작하며 별도 모델 다운로드 명령은 필요하지 않습니다.
+## 먼저 공시 범위를 정한다
 
-## 산업 워드클라우드
+서비스의 `dart_remote.wordcloud.apply`는 검증된 Repository에서 선택한 산업·기업·연도의 사업 내용 청크를 읽는다. 산업 화면은 지수 비중 순의 운영 가능한 대표기업 최대 5개, 기업 화면은 선택 기업 하나를 집계한다. 사용 가능한 Q1·H1·Q3·FY 중 사업의 내용·경영진단·연구개발실적 범위를 사용한다. 회계 표 전체를 단어 선정 대상으로 바꾸는 변경은 아니다.
 
-- 기본 표시 개수: Top12
-- `CompanyCoverage = company_count / 분석 기업 수 × 100`
-- `SpreadScore = 0.6 × CompanyCoverage + 0.4 × EntropyScore`
-- `FinalScore = 0.50 × CurrentScore + 0.30 × ChangeScore + 0.20 × SpreadScore - concentration_penalty - generic_business_penalty`
-- industry hot: 최종 Top12 중 `ChangeScore >= 90`이고 `ChangeRaw > 0`인 후보를 `ChangeRaw` 내림차순으로 정렬해 최대 3개만 표시합니다.
+전달된 원본의 독립 DB 조회를 그대로 서비스에 붙이면 현재 서비스의 버전 검증과 조회 범위를 우회할 수 있다. 따라서 산업은 `score_keywords`에, 기업은 `score_database_company_keywords_v2(..., chunks=...)`에 이미 검증된 청크를 전달한다. 기업 엔진도 이 경로에서는 DB를 다시 읽지 않는다. 진단 CLI의 독립 조회는 `release_selection.resolve`가 승인한 실제 물리 버전을 조건에 추가한다. MySQL 스키마나 원천 데이터를 변경하지 않는다.
 
-## 기업 워드클라우드
+## 최신 연도의 같은 보고서 종류끼리 비교한다
 
-- 기본 표시 개수: Top12. 최종 후보가 12개 미만이면 존재하는 후보만 반환합니다.
-- `DiversityRaw = 0.4 × C2 + 0.6 × C3`
-- `support = min(1, context_count / 10)`
-- `FinalScore = 0.50 × CurrentScore + 0.30 × ChangeScore + 0.20 × DiversityScore - generic_business_penalty`
-- company hot: `ChangeScore >= 97.5`이고 `ChangeRaw > 0`인 후보입니다.
+언급량은 청크 내 등장 횟수가 아니라 단어가 포함된 고유 청크 수다. 연도별로 이를 전체 대상 청크 수로 나눈 비율을 사용한다. 최신 자료가 2026년 Q1·H1이라면 최신 변화는 2025년 Q1·H1과 비교한다. 2025년 Q3·FY까지 섞어 최신 반기 자료와 비교하지 않는다. 서비스가 사용하는 산업의 메모리 집계 경로에도 report_type을 전달하여 이 규칙이 실제 적용되도록 했다.
 
-과거 전체 연도가 없는 상장·신규편입 기업은 missing을 0으로 만들지 않습니다. 실제 데이터가 있는 연속 연도 구간만 Change 계산에 사용합니다.
+공통 보고서 종류가 없으면 최신 구간 비교를 제외한다. 자료가 없는 해와 비연속 연도 구간도 제외한다. 과거 구간은 확보된 해당 연도 전체 대상 청크를 비교하므로 과거 자료 자체의 완전성 차이는 남을 수 있다. 최신 언급 점수와 확산·다양성은 최신 연도의 실제 대상 자료를 사용하며, 변화 계산만 최신 구간의 비교 대상을 맞춘다.
 
-```yaml
-2023: 없음
-2024: 있음
-2025: 있음
-Change: 2024→2025만 사용
-```
+유효한 변화 구간을 시간 순으로 결합한다. 첫 구간의 차이에서 시작하여 다음 구간마다 이전 결과 0.4와 새 차이 0.6을 합한다. 세 구간이 있으면 최종 비중은 0.16·0.24·0.60이다. 유효한 구간이 하나뿐이면 그 차이를 그대로 사용한다. 비교할 구간이 없으면 중립값 0이며 증가 불꽃이 붙지 않는다. 과거 자료가 없는 해의 count·rate는 결측으로 유지한다. 특정 단어가 없어서 0인 것과 연도 전체 자료가 없는 것은 다르다.
 
-이는 특정 기업을 위한 예외가 아니라 구조적 결측연도에 적용하는 공통 규칙입니다.
+## 후보와 불꽃을 정한다
 
-## 실행 및 테스트
+문서 작성·특허 법률·홍보·계약 절차·일반 경영 표현을 제외하는 규칙을 보강했다. 기업용은 본문의 영문 법인명·기관명, 직책, 설명회, 자회사·발명자 목록의 조각을 기술어로 잘못 선택하는 일을 줄인다. 후보 종류별 승인 규칙과 등록 기술어 예외를 함께 사용한다. 원문이나 일반 RAG 검색 자료를 삭제하는 필터가 아니다.
 
-프로젝트 루트 `team_client/`에서 module 방식으로 실행합니다.
+산업 점수는 현재 언급 50%·변화 30%·기업 확산 20%, 기업 점수는 현재 언급 50%·변화 30%·문맥 다양성 20%로 유지한다. 기본 최대 12개를 표시한다. 산업 불꽃은 변화 점수 90 이상, 기업 불꽃은 97.5 이상이며 두 경우 모두 변화 원값이 양수인 최종 표시 후보 중 최대 3개다. 동률은 변화 원값·변화 점수·최종 점수 내림차순, 최종 순위·단어 오름차순으로 결정한다. 조건을 만족하는 후보가 없으면 불꽃을 만들지 않는다.
+
+## 화면과 AI 설명은 유지한다
+
+`wordcloud.display`는 기존 keyword·label·size·display_weight·점수·is_hot 필드를 유지한다. 같은 기간 비교의 count·rate는 추가 진단 정보로 보존한다. 기존 UI JSON과 단어 클릭·출처 팝업 형식은 바꾸지 않는다. Gemini에 전달하는 변화값 정의도 비교 종류·가중치·결측 제외를 설명하도록 맞췄다. LLM이 단어 선정이나 크기 계산을 맡는 것은 아니다.
+
+계산 방법 식별자는 `disclosure-signal-v4-comparable-periods-noise-company-hot`이다. DB 지문·선택 기간·기업 목록·엔진/규칙/연결 코드 해시로 캐시를 구분한다. 변경 후 보고서를 읽으면 새 기준의 신호를 연결하지만 새 단어의 AI 설명까지 자동 생성하지 않는다. 설명이 없는 새 단어는 필요한 프롬프트 버전으로 분석을 다시 실행해야 한다. DB 재적재나 벡터 재임베딩은 필요 없다.
+
+## 실행과 검증
+
+연도를 생략하면 현재 조회 버전의 사용 가능한 연도를 사용한다. 설정 객체의 기본 상수 2023-2026이 실제 기간을 강제로 고정하지 않는다. 기존의 명시적인 1개년·2개년 선택도 유지했다.
 
 ```powershell
-# 산업 기본 Top12
-python -m dart_signal_wordcloud.dart_signal_wordcloud KRX_SEMI
-
-# 산업 표시 개수 및 특정 키워드 진단
-python -m dart_signal_wordcloud.dart_signal_wordcloud KRX_SEMI --top-n 12 --keyword HBM
-
-# 기업 기본 Top12
-python -m dart_signal_wordcloud.dart_company_signal_wordcloud 00126380 --sector-index KRX_SEMI
-
-# 워드클라우드 회귀 테스트
-python -m unittest discover -s dart_signal_wordcloud -t . -p "test_*.py"
+python -m dart_remote.dart_signal_wordcloud KRX_SEMI --keyword HBM
+python -m dart_remote.dart_company_signal_wordcloud 00126380 --sector-index KRX_SEMI
+python -m unittest tests.test_wordcloud_periods
 ```
 
-새 섹터는 `signal_keyword_rules.py`에 `SectorVocabulary`를 정의하고 `SECTOR_VOCABULARIES`에 지수 코드를 등록합니다. scoring entrypoint는 수정하지 않습니다.
+실제 DB 진단은 기존 MySQL 접속 환경이 필요하다. 오프라인 테스트는 같은 기간 비교, 공통 보고서 종류 부재, 결측·비연속 연도, 기업 범위 제한, 추가 DB 조회 차단과 승인된 조회 버전 조건을 확인한다. 전달된 4개 테스트도 실행 패키지의 상대 import에 맞게 반영했다. 로컬·배포 엔진과 규칙 파일을 동일하게 유지한다.
 
-## UI serializer
+배포 서버 반영은 변경된 deploy 리소스를 전송하고 `docker compose build app`, `docker compose up -d app`으로 이미지를 갱신한다. 이번 작업은 로컬 파일을 수정한 것이며 원격 서버를 직접 갱신하거나 실DB·Gemini 전체 분석을 수행한 것은 아니다.
 
-산업 Top-N은 `wordcloud_items(...)`, 기업 Top-N은 `company_wordcloud_items(...)`로 직렬화합니다.
-
-```python
-from dart_signal_wordcloud.dart_signal_wordcloud import wordcloud_items
-from dart_signal_wordcloud.dart_company_signal_wordcloud import company_wordcloud_items
-
-industry_payload = wordcloud_items(industry_top)
-
-company_payload = company_wordcloud_items(
-    company_top,
-    disclosure_contexts=None,
-    selection_reasons=None,
-    source_urls=None,
-)
-```
-
-UI keyword payload의 공통 필드는 다음과 같습니다.
-
-| 필드 | JSON 타입 | 설명 |
-|---|---|---|
-| `keyword` | string | 표시 키워드 |
-| `display_weight` | number | UI 글자 크기. 문자열이 아닌 JSON number로 전달합니다. |
-| `is_hot` | boolean | 불꽃 표시 여부. JSON boolean으로 전달합니다. |
-| `final_signal_score` | number | production 최종 점수 |
-| `disclosureContext` | string 또는 null | popup 공시 문맥 |
-| `selectionReason` | string 또는 null | popup 선정 이유 |
-| `sourceUrl` | string 또는 null | DART 원문 URL |
-
-기업 serializer는 결과에 `approval_reason`이 있으면 기본 `selectionReason`으로 사용할 수 있습니다. 사용자 친화적 설명, 공시 문맥, 원문 URL은 backend에서 enrichment하며, 제공하지 않으면 `null`이어도 됩니다. 산업 결과에도 backend가 같은 popup 필드명을 병합해 전달할 수 있습니다.
-
-## Backend 연동
-
-Frontend renderer는 `keyword`, `display_weight`, `is_hot`을 받아 산업 Top12와 기업 최대 Top12를 렌더링할 수 있습니다. Backend의 책임 범위는 다음과 같습니다.
-
-```text
-production Python 실행
-→ 산업/기업 결과 생성
-→ serializer 호출
-→ JSON 또는 API 응답 생성
-→ frontend 전달
-```
-
-현재 frontend가 `DART_BIG_IN_structure/data/project.json`을 읽는 경우 backend에서 해당 JSON을 생성하거나, frontend의 데이터 adapter를 API 호출 방식으로 연결하면 됩니다.
-
-최종 JSON shape 예시:
-
-```json
-{
-  "sectors": [
-    {
-      "id": "KRX_SEMI",
-      "keywords": [
-        {
-          "keyword": "HBM",
-          "display_weight": 100.0,
-          "is_hot": true,
-          "final_signal_score": 91.2,
-          "disclosureContext": null,
-          "selectionReason": null,
-          "sourceUrl": null
-        }
-      ]
-    }
-  ],
-  "companies": [
-    {
-      "id": "00126380",
-      "keywords": [
-        {
-          "keyword": "QD-OLED",
-          "display_weight": 87.5,
-          "is_hot": false,
-          "final_signal_score": 84.2,
-          "disclosureContext": null,
-          "selectionReason": null,
-          "sourceUrl": null
-        }
-      ]
-    }
-  ]
-}
-```
+친절한 산식 설명과 한계는 [04 공시 신호 워드클라우드](../04_공시신호워드클라우드.md)를 참고한다.

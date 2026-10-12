@@ -1,7 +1,7 @@
 """Build a KRX-sector disclosure word cloud from searchable report chunks.
 
 Extract and normalize chunk-level concepts, filter candidates, score the
-three-year signals, then return final-score Top-N. Spread combines 60% company
+configured reporting periods, then return final-score Top-N. Spread combines 60% company
 coverage with 40% normalized company mention entropy. Final score is
 0.50*Current + 0.30*Change + 0.20*Spread, less
 min(15, max(0, (max_company_share - 0.50)*30)) and 2 for general-business
@@ -26,22 +26,20 @@ def query(sql, params=None):
     values=list(params or [])
     for i in range(len(values)):sql=sql.replace("%s",":p"+str(i),1)
     return pd.DataFrame(db.rows(sql,{"p"+str(i):v for i,v in enumerate(values)}))
-
-def interval_weights(years):
-    intervals=list(zip(years,years[1:]))
-    return [(a,b,0.4+0.2*i/max(1,len(intervals)-1)) for i,(a,b) in enumerate(intervals)]
 from .signal_keyword_rules import (
     ABSTRACT_HEADS, ABSTRACT_MODIFIERS, ACCOUNTING_LABEL_HEADS,
     ACCOUNTING_LABEL_MODIFIERS, ALLOWED_SECTION_PREFIXES, ALLOWED_SUBSECTION_PHRASES,
+    CONTRACT_PROCEDURE_HEADS, CONTRACT_PROCEDURE_MODIFIERS,
     DOCUMENT_FIELD_HEADS, DOCUMENT_FIELD_MODIFIERS,
+    GENERIC_FINANCE_HEADS, GENERIC_FINANCE_MODIFIERS,
     GENERIC_NOISE_PATTERNS, GENERIC_VOCABULARY, LOW_INFORMATION_PHRASE_TERMS,
     MEASUREMENT_OR_TABLE_TOKENS, PRODUCTION_GENERIC_NOISE_CATEGORIES, SECTOR_VOCABULARIES,
-    STOPWORDS, SectorVocabulary,
+    PROMOTIONAL_HEADS, PROMOTIONAL_MODIFIERS, STOPWORDS, SectorVocabulary,
 )
 
 
 REPORT_TYPES = ("Q1", "H1", "Q3", "FY")
-DEFAULT_ANALYSIS_YEARS = (2023, 2024, 2025)
+DEFAULT_ANALYSIS_YEARS = (2023, 2024, 2025, 2026)
 DEFAULT_TOP_COMPANIES = 5
 DEFAULT_WORDCLOUD_TOP_N = 12
 DEFAULT_PAGE_SIZE = 64
@@ -109,20 +107,22 @@ def get_top_companies(index_code: str, limit: int = DEFAULT_TOP_COMPANIES) -> pd
 
 
 def _analysis_where(config: SignalConfig, companies: pd.DataFrame) -> tuple[str, list[object]]:
-    # TODO: validate other sectors' DB sections before making this policy injectable.
+    # Production uses one shared disclosure-section policy for every sector.
     codes = list(companies["corp_code"])
     code_marks = ", ".join(["%s"] * len(codes))
+    from .release_selection import resolve
+    data_version = resolve()["selected"]["data_version"]
     year_marks = ", ".join(["%s"] * len(config.years))
     type_marks = ", ".join(["%s"] * len(config.report_types))
     section_marks = " OR ".join(["section_name LIKE %s"] * len(ALLOWED_SECTION_PREFIXES))
     subsection_marks = " OR ".join(["subsection_name LIKE %s"] * len(ALLOWED_SUBSECTION_PHRASES))
     where = (
         f"corp_code IN ({code_marks}) AND year IN ({year_marks}) "
-        f"AND report_type IN ({type_marks}) AND is_active = 1 AND is_searchable = 1 AND data_version IN (SELECT data_version FROM data_versions WHERE is_current=1 AND validated=1) "
+        f"AND report_type IN ({type_marks}) AND is_active = 1 AND is_searchable = 1 AND data_version = %s "
         f"AND (({section_marks}) OR ({subsection_marks}))"
     )
     params: list[object] = [
-        *codes, *config.years, *config.report_types,
+        *codes, *config.years, *config.report_types, data_version,
         *[f"{prefix}%" for prefix in ALLOWED_SECTION_PREFIXES],
         *[f"%{phrase}%" for phrase in ALLOWED_SUBSECTION_PHRASES],
     ]
@@ -170,6 +170,66 @@ def apply_industry_hot_flags(result: pd.DataFrame, top_n: int) -> pd.DataFrame:
     return result
 
 
+def _change_raw_from_comparable_periods(
+    result: pd.DataFrame,
+    totals: pd.Series,
+    years: tuple[int, ...],
+    period_counts: dict[str, dict[tuple[int, str], int]] | None = None,
+    period_totals: dict[tuple[int, str], int] | None = None,
+    latest_report_types: tuple[str, ...] = (),
+) -> pd.Series:
+    """Blend annual changes and the newest like-for-like reporting period.
+
+    Completed years retain their annual comparisons. For an incomplete newest
+    year, only its available report types are compared with the same report
+    types of the preceding year. The established 40/60 earlier/recent blend is
+    applied successively. Missing periods are skipped, never treated as zero.
+    """
+    deltas: list[pd.Series] = []
+    completed_years = years[:-1]
+    for start, end in zip(completed_years, completed_years[1:]):
+        if end == start + 1 and totals.get(start, 0) > 0 and totals.get(end, 0) > 0:
+            deltas.append(result[f"rate_{end}"] - result[f"rate_{start}"])
+
+    if len(years) < 2:
+        return pd.Series(0.0, index=result.index)
+    previous, latest = years[-2:]
+    if period_counts is None or period_totals is None:
+        if latest == previous + 1 and totals.get(previous, 0) > 0 and totals.get(latest, 0) > 0:
+            deltas.append(result[f"rate_{latest}"] - result[f"rate_{previous}"])
+    elif latest == previous + 1 and latest_report_types:
+        previous_total = sum(period_totals.get((previous, report_type), 0)
+                             for report_type in latest_report_types)
+        latest_total = sum(period_totals.get((latest, report_type), 0)
+                           for report_type in latest_report_types)
+        if previous_total > 0 and latest_total > 0:
+            previous_counts = result["keyword"].map(
+                lambda word: sum(period_counts.get(word, {}).get((previous, report_type), 0)
+                                 for report_type in latest_report_types)
+            )
+            latest_counts = result["keyword"].map(
+                lambda word: sum(period_counts.get(word, {}).get((latest, report_type), 0)
+                                 for report_type in latest_report_types)
+            )
+            result[f"comparable_count_{previous}"] = previous_counts
+            result[f"comparable_count_{latest}"] = latest_counts
+            result[f"comparable_rate_{previous}"] = previous_counts / previous_total
+            result[f"comparable_rate_{latest}"] = latest_counts / latest_total
+            deltas.append(
+                result[f"comparable_rate_{latest}"]
+                - result[f"comparable_rate_{previous}"]
+            )
+
+    if not deltas:
+        # A neutral change is not a fabricated missing-year observation.
+        # Preserve explicit single-year analysis without claiming growth/HOT.
+        return pd.Series(0.0, index=result.index)
+    combined = deltas[0]
+    for delta in deltas[1:]:
+        combined = EARLIER_CHANGE_WEIGHT * combined + RECENT_CHANGE_WEIGHT * delta
+    return combined
+
+
 def _result_from_counts(
     counts: dict[str, dict[int, int]],
     latest_company_counts: dict[str, dict[str, int]],
@@ -177,22 +237,26 @@ def _result_from_counts(
     totals: pd.Series,
     config: SignalConfig,
     company_total: int,
+    period_counts: dict[str, dict[tuple[int, str], int]] | None = None,
+    period_totals: dict[tuple[int, str], int] | None = None,
+    latest_report_types: tuple[str, ...] = (),
 ) -> pd.DataFrame:
     """Filter chunk-level candidates and calculate the production scores."""
-    rows = [{"keyword": word, **{f"count_{year}": year_counts.get(year, 0) for year in config.years}}
+    rows = [{"keyword": word, **{f"count_{year}": year_counts.get(year, 0)
+                               if totals.get(year, 0) > 0 else float('nan') for year in config.years}}
             for word, year_counts in counts.items()]
     if not rows:
         return pd.DataFrame()
     result = pd.DataFrame(rows)
     for year in config.years:
         result[f"total_chunks_{year}"] = int(totals[year])
-        result[f"rate_{year}"] = result[f"count_{year}"] / totals[year]
+        result[f"rate_{year}"] = result[f"count_{year}"] / totals[year] if totals[year] > 0 else float('nan')
     latest = config.years[-1]
     result = result[result[f"count_{latest}"] >= config.min_latest_chunk_count].copy()
     result["current_raw"] = result[f"rate_{latest}"]
-    intervals=[(a,b,w) for a,b,w in interval_weights(config.years) if b==a+1 and totals[a]>0 and totals[b]>0]
-    weight=sum(w for a,b,w in intervals)
-    result["change_raw"] = sum(w/weight*(result[f"rate_{b}"]-result[f"rate_{a}"]) for a,b,w in intervals) if intervals else 0.0
+    result["change_raw"] = _change_raw_from_comparable_periods(
+        result, totals, config.years, period_counts, period_totals, latest_report_types,
+    )
     result["company_count"] = result["keyword"].map(lambda word: len(latest_company_counts.get(word, {})))
     result = result[result["company_count"] >= MIN_LATEST_COMPANIES].copy()
     excluded_noise = result["keyword"].map(
@@ -250,14 +314,31 @@ def score_database_keywords(config: SignalConfig, companies: pd.DataFrame,
     """Extract and score the configured DB corpus in bounded text pages."""
     where, params = _analysis_where(config, companies)
     totals_frame = query(
-        f"SELECT year, COUNT(*) AS total_chunks FROM chunk_metadata WHERE {where} GROUP BY year", params
+        f"SELECT year, report_type, COUNT(*) AS total_chunks FROM chunk_metadata "
+        f"WHERE {where} GROUP BY year, report_type", params
     )
-    totals = totals_frame.set_index("year")["total_chunks"].reindex(config.years, fill_value=0)
-    if (totals == 0).any():
-        raise ValueError(f"No searchable chunks available for year(s): {list(totals[totals == 0].index)}")
+    totals = totals_frame.groupby("year")["total_chunks"].sum().reindex(config.years, fill_value=0)
+    if totals[config.years[-1]] == 0:
+        raise ValueError(f"No searchable chunks available for latest year: {config.years[-1]}")
 
     extractor = KeywordExtractor(companies["corp_name"], config.extra_stopwords, config.vocabulary)
     latest_year = config.years[-1]
+    previous_year = latest_year - 1
+    latest_report_types = tuple(
+        report_type for report_type in config.report_types
+        if not totals_frame.loc[
+            (totals_frame["year"] == latest_year)
+            & (totals_frame["report_type"] == report_type)
+        ].empty
+        and not totals_frame.loc[
+            (totals_frame["year"] == previous_year)
+            & (totals_frame["report_type"] == report_type)
+        ].empty
+    )
+    period_totals = {
+        (int(row.year), str(row.report_type)): int(row.total_chunks)
+        for row in totals_frame.itertuples(index=False)
+    }
     latest_company_frame = query(
         "SELECT corp_code, COUNT(*) AS total_chunks FROM chunk_metadata "
         f"WHERE {where} AND year = %s GROUP BY corp_code",
@@ -269,11 +350,12 @@ def score_database_keywords(config: SignalConfig, companies: pd.DataFrame,
         for row in latest_company_frame.itertuples(index=False)
     })
     counts: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    period_counts: dict[str, dict[tuple[int, str], int]] = defaultdict(lambda: defaultdict(int))
     latest_company_counts: dict[str, Counter[str]] = defaultdict(Counter)
     last_vector_id = -1
     while True:
         page = query(
-            "SELECT vector_id, corp_code, year, chunk_text FROM chunk_metadata "
+            "SELECT vector_id, corp_code, year, report_type, chunk_text FROM chunk_metadata "
             f"WHERE {where} AND vector_id > %s ORDER BY vector_id LIMIT %s",
             [*params, last_vector_id, int(page_size)],
         )
@@ -284,12 +366,13 @@ def score_database_keywords(config: SignalConfig, companies: pd.DataFrame,
         ):
             for keyword in keywords:
                 counts[keyword][int(row.year)] += 1
+                period_counts[keyword][(int(row.year), str(row.report_type))] += 1
                 if row.year == latest_year:
                     latest_company_counts[keyword][str(row.corp_code)] += 1
         last_vector_id = int(page["vector_id"].iloc[-1])
     return _result_from_counts(
         counts, latest_company_counts, latest_company_chunk_totals,
-        totals, config, len(companies),
+        totals, config, len(companies), period_counts, period_totals, latest_report_types,
     )
 
 
@@ -376,6 +459,10 @@ def _is_informative_phrase(phrase: str,
         if ((left in DOCUMENT_FIELD_MODIFIERS and right in DOCUMENT_FIELD_HEADS)
                 or (left in ACCOUNTING_LABEL_MODIFIERS and right in ACCOUNTING_LABEL_HEADS)
                 or (left in ABSTRACT_MODIFIERS and right in ABSTRACT_HEADS)
+                or (left in PROMOTIONAL_MODIFIERS and right in PROMOTIONAL_HEADS)
+                or (left in CONTRACT_PROCEDURE_MODIFIERS
+                    and right in CONTRACT_PROCEDURE_HEADS)
+                or (left in GENERIC_FINANCE_MODIFIERS and right in GENERIC_FINANCE_HEADS)
                 or (left in vocabulary.broad_sector_terms and right == "산업")):
             return False
     # Generic action/status words at either end describe document boilerplate,
@@ -396,7 +483,7 @@ class KeywordExtractor:
             raise ImportError(
                 "kiwipiepy is required. Run: python -m pip install -r requirements.txt"
             ) from exc
-        # One worker keeps memory bounded when processing a large three-year
+        # One worker keeps memory bounded when processing a large multi-year
         # sector corpus.  This is an offline job, so predictability wins.
         self.kiwi = Kiwi(num_workers=1)
         self.vocabulary = vocabulary
@@ -478,22 +565,36 @@ def score_keywords(chunks: pd.DataFrame, config: SignalConfig, companies: pd.Dat
     if missing:
         raise ValueError(f"chunks is missing columns: {sorted(missing)}")
 
+    chunks = chunks.loc[chunks['year'].isin(config.years)
+                        & chunks['corp_code'].isin(companies['corp_code'])].drop_duplicates('chunk_id')
+    has_periods = 'report_type' in chunks
+    if has_periods:
+        chunks = chunks.loc[chunks['report_type'].isin(config.report_types)]
     totals = chunks.groupby("year")["chunk_id"].nunique().reindex(config.years, fill_value=0)
-    if (totals == 0).any():
-        absent = list(totals[totals == 0].index)
-        raise ValueError(f"No searchable chunks available for year(s): {absent}")
+    if totals[config.years[-1]] == 0:
+        raise ValueError(f"No searchable chunks available for latest year: {config.years[-1]}")
+    period_totals = (chunks.groupby(['year', 'report_type'])['chunk_id'].nunique().to_dict()
+                     if has_periods else None)
+    latest = config.years[-1]
+    latest_report_types = tuple(t for t in config.report_types
+                               if period_totals and period_totals.get((latest, t), 0) > 0
+                               and period_totals.get((latest - 1, t), 0) > 0)
+    period_counts = defaultdict(lambda: defaultdict(int)) if has_periods else None
 
     extractor = KeywordExtractor(companies["corp_name"], config.extra_stopwords, config.vocabulary)
     appearances: list[tuple[int, str, str, str]] = []
-    selected = chunks[["chunk_id", "corp_code", "year", "chunk_text"]]
+    selected = chunks[["chunk_id", "corp_code", "year", "chunk_text"]
+                      + (["report_type"] if has_periods else [])]
     # Keep the Kiwi input bounded.  Sending every disclosure text to Kiwi in
-    # one call can require more than a gigabyte of RAM for a three-year sector.
+    # one call can require more than a gigabyte of RAM for a multi-year sector.
     for start in range(0, len(selected), config.tokenizer_batch_size):
         batch = selected.iloc[start:start + config.tokenizer_batch_size]
         extracted = extractor.extract_many(batch["chunk_text"].fillna(""))
         for row, keywords in zip(batch.itertuples(index=False), extracted):
             for keyword in keywords:
                 appearances.append((row.year, row.corp_code, row.chunk_id, keyword))
+                if has_periods:
+                    period_counts[keyword][(int(row.year), str(row.report_type))] += 1
     if not appearances:
         return pd.DataFrame()
 
@@ -517,7 +618,7 @@ def score_keywords(chunks: pd.DataFrame, config: SignalConfig, companies: pd.Dat
         latest_company_chunk_totals.setdefault(str(code), 0)
     return _result_from_counts(
         counts, latest_company_counts, latest_company_chunk_totals,
-        totals, config, len(companies),
+        totals, config, len(companies), period_counts, period_totals, latest_report_types,
     )
 
 

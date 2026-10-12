@@ -1,3 +1,4 @@
+import os
 import threading
 import unittest
 from types import SimpleNamespace
@@ -7,6 +8,7 @@ from dart_remote.token_counts import cached_count
 from snapdart import llm
 
 
+@patch.dict(os.environ, {'INSIGHT_VALIDATION_MODE': 'strict'})
 class GenerationConcurrencyTests(unittest.TestCase):
     def report(self):
         company=dict(name='기업',code='A',ai_insights={},wordcloud={'2025':[dict(text='제품')]})
@@ -79,3 +81,29 @@ class GenerationConcurrencyTests(unittest.TestCase):
             os.environ.pop('GEMINI_CONCURRENCY',None)
             generate_all(report,SimpleNamespace(),generate)
         self.assertEqual(len(calls),4)
+
+
+@patch.dict(os.environ, {'INSIGHT_VALIDATION_MODE': 'strict'})
+class GenerationFailureStatusTests(unittest.TestCase):
+    def test_failure_is_announced_while_other_running_work_finishes(self):
+        from concurrent.futures import wait as actual_wait
+        from dart_remote import generation
+        started=threading.Event();release=threading.Event();calls=[];messages=[]
+        report=GenerationConcurrencyTests().report()
+        def generate(scope,isolated,repo,company,force,keyword=None):
+            calls.append(keyword)
+            if keyword:
+                started.set()
+                if not release.wait(3):raise TimeoutError('test worker timeout')
+                return dict(sentences=[])
+            if not started.wait(3):raise TimeoutError('test worker start timeout')
+            raise ValueError('comparison validation failed')
+        def emit(*args,**kwargs):
+            message=' '.join(map(str,args));messages.append(message)
+            if '최종 실패 안내 전 종료 대기' in message:release.set()
+        with patch.dict('os.environ',{'GEMINI_CONCURRENCY':'2'}),patch('builtins.print',side_effect=emit),self.assertRaises(ValueError):
+            generate_all(report,SimpleNamespace(),generate)
+        self.assertTrue(any('분석 작업 실패' in message for message in messages))
+        self.assertTrue(any('최종 실패 안내 전 종료 대기' in message for message in messages))
+        self.assertEqual(len(calls),2)
+        self.assertNotIn('2025',report['ai_insights'])

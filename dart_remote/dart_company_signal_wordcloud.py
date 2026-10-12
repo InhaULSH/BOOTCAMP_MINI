@@ -17,19 +17,18 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from .dart_signal_wordcloud import query, interval_weights
+from .dart_signal_wordcloud import query
 from .dart_signal_wordcloud import (
     CHANGE_WEIGHT,
     CURRENT_WEIGHT,
     DEFAULT_ANALYSIS_YEARS,
     DEFAULT_PAGE_SIZE,
     DEFAULT_WORDCLOUD_TOP_N,
-    EARLIER_CHANGE_WEIGHT,
     GENERIC_BUSINESS_PENALTY,
-    RECENT_CHANGE_WEIGHT,
     REPORT_TYPES,
     SPREAD_WEIGHT,
     _canonical,
+    _change_raw_from_comparable_periods,
     _is_candidate,
     _looks_like_structural_field,
     _percentile_score,
@@ -49,6 +48,7 @@ from .signal_keyword_rules import (
 
 
 COMPANY_HOT_SCORE_THRESHOLD = 97.5
+MAX_COMPANY_HOT_KEYWORDS = 3
 
 
 @dataclass(frozen=True)
@@ -94,19 +94,21 @@ def get_company(corp_code: str) -> pd.Series:
 
 def _analysis_where(config: CompanySignalConfig) -> tuple[str, list[object]]:
     """Select the same report/section corpus as before consolidation."""
+    from .release_selection import resolve
+    data_version = resolve()["selected"]["data_version"]
     year_marks = ", ".join(["%s"] * len(config.years))
     type_marks = ", ".join(["%s"] * len(config.report_types))
     section_marks = " OR ".join(["section_name LIKE %s"] * len(ALLOWED_SECTION_PREFIXES))
     subsection_marks = " OR ".join(["subsection_name LIKE %s"] * len(ALLOWED_SUBSECTION_PHRASES))
     where = (
         f"corp_code = %s AND year IN ({year_marks}) "
-        f"AND report_type IN ({type_marks}) AND is_active = 1 AND is_searchable = 1 AND data_version IN (SELECT data_version FROM data_versions WHERE is_current=1 AND validated=1) "
+        f"AND report_type IN ({type_marks}) AND is_active = 1 AND is_searchable = 1 AND data_version = %s "
         f"AND (({section_marks}) OR ({subsection_marks}))"
     )
     params: list[object] = [
         config.corp_code,
         *config.years,
-        *config.report_types,
+        *config.report_types, data_version,
         *[f"{prefix}%" for prefix in ALLOWED_SECTION_PREFIXES],
         *[f"%{phrase}%" for phrase in ALLOWED_SUBSECTION_PHRASES],
     ]
@@ -117,6 +119,9 @@ def _result_from_counts(
     counts: dict[str, dict[int, int]],
     totals: pd.Series,
     config: CompanySignalConfig,
+    period_counts: dict[str, dict[tuple[int, str], int]] | None = None,
+    period_totals: dict[tuple[int, str], int] | None = None,
+    latest_report_types: tuple[str, ...] = (),
 ) -> pd.DataFrame:
     """Apply latest-year/generic filters and compute Current, Change, and hot."""
     available_years = {
@@ -147,17 +152,9 @@ def _result_from_counts(
         raise ValueError(f"No searchable chunks available for latest year: {latest}")
     result = result[result[f"count_{latest}"] >= config.min_latest_chunk_count].copy()
     result["current_raw"] = result[f"rate_{latest}"]
-    weighted_intervals = interval_weights(config.years)
-    valid_intervals = [
-        (start, end, weight)
-        for start, end, weight in weighted_intervals
-        if end == start + 1 and available_years[start] and available_years[end]
-    ]
-    valid_weight = sum(weight for _, _, weight in valid_intervals)
-    result["change_raw"] = sum(
-        (weight / valid_weight) * (result[f"rate_{end}"] - result[f"rate_{start}"])
-        for start, end, weight in valid_intervals
-    ) if valid_intervals else 0.0
+    result["change_raw"] = _change_raw_from_comparable_periods(
+        result, totals, config.years, period_counts, period_totals, latest_report_types,
+    )
     excluded_noise = result["keyword"].map(
         lambda keyword: bool(PRODUCTION_GENERIC_NOISE_CATEGORIES.intersection(generic_noise_categories(keyword)))
     )
@@ -200,7 +197,7 @@ ACTION_HEADS = frozenset({"투자", "전환", "확대", "다변화", "증설"})
 RELATIONAL_HEADS = frozenset({"기반"})
 VAGUE_MODIFIERS = frozenset({
     "규모", "최대", "주력", "필수", "기본", "일반", "최고", "업계",
-    "전략", "경쟁력", "경험", "사용", "사용자", "서비스",
+    "전략", "경쟁력", "경험", "사용", "사용자", "서비스", "기반",
 })
 GENERIC_STANDALONE = frozenset({
     "공정", "장비", "소재", "기술", "제품", "사업", "투자", "수요",
@@ -260,6 +257,12 @@ OWN_COMPANY_CUES = re.compile(r"당사|동사|자사|우리\s*회사|회사는")
 CUSTOMER_CUES = re.compile(r"고객사|고객|거래처|패널\s*업체|발주처")
 MARKET_CUES = re.compile(r"시장|산업|정부|각국|업계|글로벌|전방")
 NON_ACTION_CUES = re.compile(r"비용\s*절감|절감|대응")
+ORGANIZATION_ROLE_CONTEXT = re.compile(
+    r"^\s*(?:[A-Za-z]{2,}\s*)?[가-힣]*(?:센터장|센터|실장|팀장|담당|사업부장|본부장|연구소장|부문장)"
+)
+CORPORATE_EVENT_CONTEXT = re.compile(
+    r"(?is)\b[A-Za-z][A-Za-z ]{1,40}\sDay(?![A-Za-z]).{0,40}(?:개최|행사|설명회)"
+)
 
 
 @dataclass(frozen=True)
@@ -385,6 +388,24 @@ class CompanyCandidateExtractorV2:
             for term in sorted(context_terms, key=len, reverse=True)
             if term
         )
+
+    def register_entity_aliases(self, texts: Iterable[str]) -> None:
+        """Learn legal-name aliases so shortened entity names are not candidates."""
+        for raw_text in texts:
+            text = unicodedata.normalize("NFKC", raw_text or "")
+            for match in ENTITY_NAME_WITH_DESIGNATOR.finditer(text):
+                tokens = _ENGLISH_SPAN_TOKEN.findall(match.group())
+                designator_index = next(
+                    (
+                        index for index, token in enumerate(tokens)
+                        if token.casefold() in ENTITY_DESIGNATORS
+                    ),
+                    None,
+                )
+                if designator_index is None or designator_index < 2:
+                    continue
+                alias = _canonical(" ".join(tokens[:designator_index]), self.vocabulary)
+                self.company_names.update({alias, alias.upper()})
 
     def has_sector_context(self, text: str) -> bool:
         """Return whether a chunk contains an injected sector concept."""
@@ -567,6 +588,30 @@ def _looks_like_entity_name(value: str) -> bool:
     return bool(set(tokens) & ENTITY_DESIGNATORS)
 
 
+ENTITY_CONTEXT_CUES = re.compile(
+    r"(?:자회사|종속회사|해외법인|합작법인|현지법인|"
+    r"지분\s*\d|[가-힣]+(?:시|주|국)에\s*소재)"
+)
+ENTITY_NAME_WITH_DESIGNATOR = re.compile(
+    r"\b(?:[A-Za-z][A-Za-z0-9&'-]*[\s,.\-]+){1,5}"
+    r"(?:AG|BANK|CORP(?:ORATION)?|CO(?:MPANY)?|HOLDINGS|INDUSTRIES|INC|JV|LLC|LTD|"
+    r"OPERATIONS|PLC|SA|SE)\.?\b",
+    re.IGNORECASE,
+)
+
+
+def _inside_entity_context(text: str, start: int, end: int) -> bool:
+    """Detect organization-name context around an English promotion span."""
+    context = text[max(0, start - 80):min(len(text), end + 80)]
+    return bool(ENTITY_CONTEXT_CUES.search(context))
+
+
+def _inside_corporate_event_context(text: str, start: int, end: int) -> bool:
+    """Detect an English event title used with an explicit event cue."""
+    context = text[max(0, start - 60):min(len(text), end + 80)]
+    return bool(CORPORATE_EVENT_CONTEXT.search(context))
+
+
 def _inside_person_name_list(text: str, start: int, end: int) -> bool:
     """Detect comma-separated author/inventor lists around a promotion span."""
     line_start = max(text.rfind("\n", 0, start), text.rfind(";", 0, start)) + 1
@@ -595,7 +640,11 @@ def _inside_person_name_list(text: str, start: int, end: int) -> bool:
 
 def _english_promotion_forms(text: str, start: int, end: int) -> set[str]:
     """Collect contiguous 2-5 token spans around an English occurrence."""
-    if _inside_person_name_list(text, start, end):
+    if (
+        _inside_person_name_list(text, start, end)
+        or _inside_entity_context(text, start, end)
+        or _inside_corporate_event_context(text, start, end)
+    ):
         return set()
     window_start, window_end = max(0, start - 40), min(len(text), end + 50)
     window = text[window_start:window_end]
@@ -609,13 +658,17 @@ def _english_promotion_forms(text: str, start: int, end: int) -> set[str]:
         gap = text[tokens[left][2]:tokens[right][1]]
         return bool(gap) and bool(re.fullmatch(r"[ -]+", gap))
 
+    def entity_connected(left: int, right: int) -> bool:
+        gap = text[tokens[left][2]:tokens[right][1]]
+        return bool(gap) and bool(re.fullmatch(r"[\s,.\-]+", gap))
+
     # Suppress partial spans when the occurrence belongs to a longer legal
     # entity name (for example, the prefix of a name ending in BANK PLC).
     entity_first = middle
-    while entity_first > 0 and connected(entity_first - 1, entity_first):
+    while entity_first > 0 and entity_connected(entity_first - 1, entity_first):
         entity_first -= 1
     entity_last = middle
-    while entity_last + 1 < len(tokens) and connected(entity_last, entity_last + 1):
+    while entity_last + 1 < len(tokens) and entity_connected(entity_last, entity_last + 1):
         entity_last += 1
     entity_span = text[tokens[entity_first][1]:tokens[entity_last][2]]
     if _looks_like_entity_name(entity_span):
@@ -853,6 +906,25 @@ def _is_contained_span(short: str, long: str) -> bool:
     return short.replace(" ", "").casefold() in long.replace(" ", "").casefold()
 
 
+def apply_company_hot_flags(result: pd.DataFrame, top_n: int) -> pd.DataFrame:
+    """Keep at most three strongest qualifying HOT signals inside company Top-N."""
+    result = result.copy()
+    result["is_hot"] = False
+    if result.empty or top_n < 1:
+        return result
+    eligible = result.loc[
+        (result["final_rank"] <= top_n)
+        & (result["change_score"] >= COMPANY_HOT_SCORE_THRESHOLD)
+        & (result["change_raw"] > 0)
+    ].sort_values(
+        ["change_raw", "change_score", "final_signal_score", "final_rank", "keyword"],
+        ascending=[False, False, False, True, True],
+        kind="mergesort",
+    )
+    result.loc[eligible.head(MAX_COMPANY_HOT_KEYWORDS).index, "is_hot"] = True
+    return result
+
+
 def _promotion_span_features(
     short: str, phrase: str, occurrences: int,
     stopwords: set[str],
@@ -878,21 +950,42 @@ def score_database_company_keywords_v2(
     """Score DB pages or an already version-scoped repository corpus."""
     if page_size < 1:
         raise ValueError("page_size must be positive")
-    where, params = _analysis_where(config)
-    summary = (chunks.groupby(["year","report_type"]).size().reset_index(name="total_chunks") if chunks is not None else query(
-        f"SELECT year, report_type, COUNT(*) AS total_chunks FROM chunk_metadata WHERE {where} "
-        "GROUP BY year, report_type", params))
+    if chunks is not None:
+        chunks = chunks.loc[chunks['year'].isin(config.years)
+                            & chunks['report_type'].isin(config.report_types)
+                            & (chunks['corp_code'] == config.corp_code)].drop_duplicates('vector_id')
+        summary = chunks.groupby(['year', 'report_type']).size().reset_index(name='total_chunks')
+    else:
+        where, params = _analysis_where(config)
+        summary = query(
+            f"SELECT year, report_type, COUNT(*) AS total_chunks FROM chunk_metadata WHERE {where} "
+            "GROUP BY year, report_type", params,
+        )
     if summary.empty:
         raise ValueError(f"No searchable chunks available for {config.corp_code}")
     totals = summary.groupby("year")["total_chunks"].sum().reindex(config.years, fill_value=0)
     latest = config.years[-1]
+    previous_year = latest - 1
+    latest_report_types = tuple(
+        report_type for report_type in config.report_types
+        if not summary.loc[
+            (summary["year"] == latest) & (summary["report_type"] == report_type)
+        ].empty
+        and not summary.loc[
+            (summary["year"] == previous_year) & (summary["report_type"] == report_type)
+        ].empty
+    )
+    period_totals = {
+        (int(row.year), str(row.report_type)): int(row.total_chunks)
+        for row in summary.itertuples(index=False)
+    }
     if totals[latest] == 0:
         raise ValueError(f"No searchable chunks available for latest year: {latest}")
     extractor = CompanyCandidateExtractorV2(
         [company_name], config.vocabulary, config.extra_stopwords,
         V2_SECTOR_ROLES.get(config.sector_index_code, V2SectorRoles()),
     )
-    observed: list[tuple[int, int, str, CandidateObservation]] = []
+    observed: list[tuple[int, int, str, str, CandidateObservation]] = []
     english_chunks: dict[str, set[int]] = defaultdict(set)
     english_sections: dict[str, set[str]] = defaultdict(set)
     english_contexts: dict[str, set[int]] = defaultdict(set)
@@ -901,6 +994,7 @@ def score_database_company_keywords_v2(
     english_occurrences: dict[str, int] = defaultdict(int)
     english_standalone_occurrences: dict[str, int] = defaultdict(int)
     english_model_fragments: dict[str, int] = defaultdict(int)
+    english_organization_roles: dict[str, int] = defaultdict(int)
     english_other_latin_contexts: dict[str, int] = defaultdict(int)
     english_longer_occurrences: dict[str, int] = defaultdict(int)
     english_longer_forms: dict[str, Counter[str]] = defaultdict(Counter)
@@ -922,20 +1016,27 @@ def score_database_company_keywords_v2(
     generation_numbers: dict[str, set[str]] = defaultdict(set)
     generation_contexts: dict[str, set[int]] = defaultdict(set)
     counts: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    period_counts: dict[str, dict[tuple[int, str], int]] = defaultdict(lambda: defaultdict(int))
     latest_chunk_texts: dict[int, str] = {}
     sector_context_chunks: set[int] = set()
     last_vector_id = -1
     while True:
-        page = (chunks.loc[chunks["vector_id"]>last_vector_id].sort_values("vector_id").head(page_size) if chunks is not None else query(
-            "SELECT vector_id, year, section_name, chunk_text FROM chunk_metadata "
-            f"WHERE {where} AND vector_id > %s ORDER BY vector_id LIMIT %s", [*params,last_vector_id,int(page_size)]))
+        page = (chunks.loc[chunks['vector_id'] > last_vector_id].sort_values('vector_id').head(page_size)
+                if chunks is not None else query(
+                    "SELECT vector_id, year, report_type, section_name, chunk_text FROM chunk_metadata "
+                    f"WHERE {where} AND vector_id > %s ORDER BY vector_id LIMIT %s",
+                    [*params, last_vector_id, int(page_size)],
+                ))
         if page.empty:
             break
+        extractor.register_entity_aliases(page["chunk_text"].fillna(""))
         for row, observation in zip(
             page.itertuples(index=False), extractor.extract_many(page["chunk_text"].fillna(""))
         ):
             chunk_id = int(row.vector_id)
-            observed.append((chunk_id, int(row.year), row.section_name, observation))
+            observed.append(
+                (chunk_id, int(row.year), str(row.report_type), row.section_name, observation)
+            )
             text = unicodedata.normalize("NFKC", row.chunk_text or "")
             if extractor.has_sector_context(text):
                 sector_context_chunks.add(chunk_id)
@@ -1020,6 +1121,9 @@ def score_database_company_keywords_v2(
                     # and model fragments, not just measurement suffixes.
                     english_model_fragments[keyword] += bool(
                         re.search(r"\d\s?$", left) or re.match(r"^\s?\d", right)
+                    )
+                    english_organization_roles[keyword] += bool(
+                        ORGANIZATION_ROLE_CONTEXT.search(right)
                     )
                     # A nearby English component may be a generic modifier or a compound part.
                     english_other_latin_contexts[keyword] += bool(
@@ -1110,6 +1214,7 @@ def score_database_company_keywords_v2(
         dominant_ratio = max(english_section_counts[keyword].values()) / independent
         standalone_ratio = english_standalone_occurrences[keyword] / occurrences
         model_ratio = english_model_fragments[keyword] / occurrences
+        organization_role_ratio = english_organization_roles[keyword] / occurrences
         generic_ratio = english_other_latin_contexts[keyword] / occurrences
         section_count = len(english_sections[keyword])
         neighbour_count = len(english_neighbours[keyword])
@@ -1118,6 +1223,7 @@ def score_database_company_keywords_v2(
             and context_ratio >= MIN_CONTEXT_RATIO
             and standalone_ratio >= MIN_STANDALONE_RATIO
             and model_ratio <= MAX_MODEL_FRAGMENT_RATIO
+            and organization_role_ratio < 0.80
         )
         breadth_sections = safe_context and section_count >= 2
         breadth_neighbours = (
@@ -1259,7 +1365,7 @@ def score_database_company_keywords_v2(
     all_candidate_chunks: dict[str, set[int]] = defaultdict(set)
     latest_candidate_chunks: dict[str, set[int]] = defaultdict(set)
     latest_chunk_candidates: dict[int, set[str]] = {}
-    for chunk_id, year, _, observation in observed:
+    for chunk_id, year, report_type, _, observation in observed:
         chunk_keywords = set(observation.direct)
         chunk_keywords.update(set(observation.english) & approved_english)
         chunk_keywords.update(set(observation.generations) & approved_generations)
@@ -1272,9 +1378,13 @@ def score_database_company_keywords_v2(
                     "; ".join(sorted(promotion_reasons[longer])),
                     "v2.5.stable_boundary",
                 ))
+        chunk_keywords = {
+            keyword for keyword in chunk_keywords if extractor._accept(keyword)
+        }
         for keyword in chunk_keywords:
             all_candidate_chunks[keyword].add(chunk_id)
             counts[keyword][year] += 1
+            period_counts[keyword][(year, report_type)] += 1
             if year == latest:
                 latest_candidate_chunks[keyword].add(chunk_id)
             paths[keyword].update(observation.direct.get(keyword, ()))
@@ -1307,13 +1417,16 @@ def score_database_company_keywords_v2(
         for chunk_keywords in latest_chunk_candidates.values():
             chunk_keywords.difference_update(sector_unrelated)
 
-    result = _result_from_counts(counts, totals, config)
+    result = _result_from_counts(
+        counts, totals, config, period_counts, period_totals, latest_report_types,
+    )
     if result.empty:
         return result
     result = _score_context_diversity(
         result, latest_candidate_chunks, latest_chunk_candidates,
         latest_chunk_texts, config.vocabulary, latest,
     )
+    result = apply_company_hot_flags(result, config.top_n)
     category_order = (
         "protected_tech", "technical_generation", "independent_tech",
         "promoted_technical_phrase", "promoted_concrete_phrase", "market_signal",

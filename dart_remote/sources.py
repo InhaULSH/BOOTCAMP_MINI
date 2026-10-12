@@ -39,7 +39,7 @@ def revenue_source(code,year,key='revenue',sector_id=None,report_type='FY',basis
     if basis is None and f['basis'] is None:f=repo.financial(code,year,report_type,'OFS',value_type)
     if f[key] is None:raise KeyError('해당 지표의 재무 수치가 없습니다.')
     sources=f['financial_sources'][key];receipt=next(iter({r['rcept_no'] for r in sources}),'')
-    if f.get('financial_source')=='xml':
+    if sources and sources[0].get('source_kind')=='xml':
         from .xml_financials import source_view
         row=sources[0]
         return dict(company=repo.company(code)['company_name'],year=year,value=f[key],basis=f['basis'],

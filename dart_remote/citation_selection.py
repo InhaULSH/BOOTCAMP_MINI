@@ -3,7 +3,7 @@ import hashlib
 import re
 import os
 
-VERSION = 'claim-evidence-v6-detailed-errors'
+VERSION = 'claim-evidence-v7-mvp-default'
 
 class CitationValidationError(ValueError):
     """Existing ValueError handlers still apply; correction receives exact issues."""
@@ -112,7 +112,7 @@ def bounded_rows(rows,years):
             used+=len(row['text']);seen.add(row['chunk_id']);result.append(row)
     return result
 
-def schema(llm, minimum, maximum, evidence):
+def schema(llm, minimum, maximum, evidence, allow_financial=False):
     grade=llm.object_schema({k:dict(type='integer',minimum=0,maximum=4) for k in ('F','U','C','T')})
     chunk_id=dict(type='string',enum=[e['id'] for e in evidence if e['kind']=='filing'],description='청크 ID tN. 문장 ID tN-pM은 사용하지 않음')
     passage_id=dict(type='string',enum=[p['id'] for e in evidence if e['kind']=='filing' for p in e['passages']],description='해당 청크 내부 원문 문장 ID tN-pM')
@@ -121,7 +121,8 @@ def schema(llm, minimum, maximum, evidence):
         'irrelevant_content':dict(type='string',enum=['none','some','substantial']),
         'redundancy':dict(type='string',enum=['none','some','substantial']),
         'passage_ids':dict(type='array',items=passage_id,minItems=1)})
-    item=llm.object_schema({'text':llm.TEXT,'refs':dict(type='array',items=dict(type='string',enum=[e['id'] for e in evidence if e['kind']=='filing'],description='자연어 공시 청크 ID tN만 사용. 재무 ID와 문장 ID 금지')),
+    kinds=('filing','financial') if allow_financial else ('filing',)
+    item=llm.object_schema({'text':llm.TEXT,'refs':dict(type='array',items=dict(type='string',enum=[e['id'] for e in evidence if e['kind'] in kinds],description='공시 청크 tN 또는 검증된 재무 fN. 문장 ID 금지' if allow_financial else '자연어 공시 청크 ID tN만 사용. 재무 ID와 문장 ID 금지')),
         'assessments':dict(type='array',items=assessment)})
     array=dict(type='array',items=item)
     if maximum:array['maxItems']=maximum
@@ -132,7 +133,8 @@ def schema(llm, minimum, maximum, evidence):
     array['description']=f'각 배열 항목은 요약 1문장입니다. 적격 근거가 있으면 {minimum}'+(f'-{maximum}' if maximum and maximum!=minimum else '')+'개 항목, 충분하지 않으면 빈 배열과 insufficient_reason을 반환하세요.'
     return llm.object_schema({'sentences':array,'insufficient_reason':llm.TEXT})
 
-def _validate(value,evidence,minimum,maximum):
+def _validate(value,evidence,minimum,maximum,allow_financial=False,criteria=(3,3,75)):
+    min_f,min_c,min_score=criteria
     items=value.get('sentences') if isinstance(value,dict) else None
     if not isinstance(items,list):raise ValueError('문장 형식 오류')
     if 'insufficient_reason' in value and not isinstance(value['insufficient_reason'],str):raise ValueError('insufficient_reason은 문자열이어야 합니다.')
@@ -149,7 +151,8 @@ def _validate(value,evidence,minimum,maximum):
         if not isinstance(item,dict):raise ValueError('sentences 항목은 객체여야 합니다.')
         if not isinstance(item.get('text'),str) or not item['text'].strip():raise ValueError('빈 요약 문장')
         refs=item.get('refs',[])
-        if not isinstance(refs,list) or any(not isinstance(i,str) or i not in lookup or lookup[i]['kind']!='filing' for i in refs):
+        kinds=('filing','financial') if allow_financial else ('filing',)
+        if not isinstance(refs,list) or any(not isinstance(i,str) or i not in lookup or lookup[i]['kind'] not in kinds for i in refs):
             raise CitationValidationError('입력 근거 ID 오류',[dict(error_code='UNKNOWN_REFERENCE',sentence_index=index)])
         if len(refs)!=len(set(refs)):raise ValueError('refs에 동일 근거 ID가 반복되었습니다. 동일 청크의 여러 문장은 1개 근거입니다. 적격 공시 근거가 뒷받침하는 문장으로 다시 작성하거나 sentences=[]와 insufficient_reason을 반환하세요.')
         eligible={}; seen=set()
@@ -157,6 +160,7 @@ def _validate(value,evidence,minimum,maximum):
         if not isinstance(assessments,list):raise ValueError('assessments는 배열이어야 합니다.')
         for a in assessments:
             if not isinstance(a,dict) or not isinstance(a.get('id'),str):raise ValueError('assessments 항목과 id 형식 오류')
+            if allow_financial and a['id'] in lookup and lookup[a['id']]['kind']=='financial':raise ValueError('재무 ID는 assessments에 넣을 수 없습니다.')
             # Unselected candidate grades cannot invalidate selected, verified citations.
             if a['id'] not in refs:continue
             if not isinstance(a.get('reason'),str):raise ValueError('평가 reason은 문자열이어야 합니다.')
@@ -176,18 +180,18 @@ def _validate(value,evidence,minimum,maximum):
             if any(not natural_passage(valid[i]['text']) for i in chosen):raise ValueError('근거는 20자 이상의 자연어 문장만 허용합니다. 수치·표 문장은 제외하세요.')
             a['passages']=[dict(start=valid[i]['start'],end=valid[i]['end']) for i in chosen]
             a['score']=round(score,2)
-            if a.get('suitable') is True and g['F']>=3 and g['C']>=3 and score>=75:eligible[e['id']]=a
+            if a.get('suitable') is True and g['F']>=min_f and g['C']>=min_c and score>=min_score:eligible[e['id']]=a
             else:
                 failures=[]
                 if not a['suitable']:failures.append('UNSUITABLE_EVIDENCE')
-                if g['F']<3:failures.append('FACT_SUPPORT_BELOW_MIN')
-                if g['C']<3:failures.append('CLARITY_BELOW_MIN')
-                if score<75:failures.append('EVIDENCE_SCORE_BELOW_MIN')
+                if g['F']<min_f:failures.append('FACT_SUPPORT_BELOW_MIN')
+                if g['C']<min_c:failures.append('CLARITY_BELOW_MIN')
+                if score<min_score:failures.append('EVIDENCE_SCORE_BELOW_MIN')
                 issues.append(dict(error_code='INELIGIBLE_EVIDENCE',failures=failures,sentence_index=index,ref=e['id'],
-                    grades=dict(g),suitable=a['suitable'],computed_score=round(score,2),required_score=75,
-                    minimum_F=3,minimum_C=3,penalties={k:a[k] for k in ('irrelevant_content','redundancy')}))
+                    grades=dict(g),suitable=a['suitable'],computed_score=round(score,2),required_score=min_score,
+                    minimum_F=min_f,minimum_C=min_c,penalties={k:a[k] for k in ('irrelevant_content','redundancy')}))
         chosen=[i for i in refs if lookup[i]['kind']=='filing']
-        if not chosen:raise CitationValidationError('문장마다 적격 자연어 공시 근거가 최소 1개 필요합니다. 근거가 없으면 해당 문장을 생략하세요.',[dict(error_code='MISSING_REFERENCE',sentence_index=index)])
+        if not chosen and (not allow_financial or not refs):raise CitationValidationError('문장마다 적격 근거가 최소 1개 필요합니다. 근거가 없으면 해당 문장을 생략하세요.',[dict(error_code='MISSING_REFERENCE',sentence_index=index)])
         for eid in chosen:
             if eid not in seen:issues.append(dict(error_code='MISSING_ASSESSMENT',sentence_index=index,ref=eid))
         if any(i not in eligible for i in chosen):continue
@@ -196,8 +200,10 @@ def _validate(value,evidence,minimum,maximum):
     if issues:raise CitationValidationError('선택 근거의 점수 또는 적격 기준 미달',issues)
     return value
 
-def validate(value,evidence,minimum,maximum):
-    try:return _validate(value,evidence,minimum,maximum)
+def validate(value,evidence,minimum,maximum,allow_financial=False,criteria=(3,3,75)):
+    from .mvp_validation import enabled,validate as validate_mvp
+    if enabled():return validate_mvp(value,evidence,allow_financial)
+    try:return _validate(value,evidence,minimum,maximum,allow_financial,criteria)
     except CitationValidationError:raise
     except ValueError as error:
         raise CitationValidationError(str(error),[dict(error_code='CITATION_FORMAT_ERROR',detail=str(error))]) from None

@@ -1,5 +1,5 @@
 /* Home-specific geometry. Typography, header, cards and dialogs use analysis.css. */
-body[data-page="index"] .intro{margin:26px 0 28px}
+body[data-page="index"] .intro{margin:-174px 0 28px}
 .intro-description{font-size:16px;line-height:1.85;color:#5a7061;margin:14px 0 0}
 .sector-field{height:580px;position:relative;border:1px solid #e1e9e3;border-radius:24px;background:#fff;isolation:isolate;overflow:visible}
 .orbit-ring{display:none}

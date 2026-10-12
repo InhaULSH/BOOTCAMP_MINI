@@ -48,15 +48,40 @@ export function lineChart(container, sets, labels, options = {}) {
   const tooltip = document.getElementById('chart-tip');
   sets.forEach(series => {
     const group = svgElement('g', {'data-company':series.id, class:'chart-series'}); svg.append(group);
-    // Missing observations form gaps; never replace them with zero or join across them.
+    // Solid lines contain observations only; an optional dashed bridge marks
+    // missing periods without adding values to the series or its axis bounds.
     let segment = [];
     const flush = () => {if (segment.length) group.append(svgElement('polyline', {points:segment.join(' '), fill:'none', stroke:series.color, 'stroke-width':2.3,'stroke-linejoin':'round'})); segment = [];};
     series.values.forEach((v,i) => {if (!number(v)) flush(); else segment.push(`${x(i)},${y(v)}`);}); flush();
+    if(options.missingDescription){
+      const valid=series.values.map((v,i)=>number(v)?i:null).filter(i=>i!==null);
+      const notify=(node,description)=>{
+        node.setAttribute('tabindex','0');node.setAttribute('aria-label',description);
+        const show=event=>{tooltip.textContent=description;tooltip.hidden=false;tooltip.style.left=Math.max(8,Math.min(event.clientX+12,innerWidth-tooltip.offsetWidth-8))+'px';tooltip.style.top=Math.max(8,Math.min(event.clientY+12,innerHeight-tooltip.offsetHeight-8))+'px';};
+        node.addEventListener('pointerenter',show);node.addEventListener('pointermove',show);node.addEventListener('pointerleave',()=>tooltip.hidden=true);
+        node.addEventListener('focus',()=>{const r=node.getBoundingClientRect();show({clientX:r.x,clientY:r.y});});node.addEventListener('blur',()=>tooltip.hidden=true);
+      };
+      for(let a=0;a<valid.length-1;a++){
+        const left=valid[a],right=valid[a+1];
+        if(right-left!==2)continue;
+        const missing=Array.from({length:right-left-1},(_,j)=>left+j+1);
+        if(!missing.every(i=>options.missingDescription(series,i)))continue;
+        group.append(svgElement('line',{x1:x(left),y1:y(series.values[left]),x2:x(right),y2:y(series.values[right]),stroke:series.color,'stroke-width':2.3,'stroke-dasharray':'5 4',class:'chart-gap','pointer-events':'none'}));
+        // Wide transparent hit segments keep every missing period reachable.
+        const position=i=>y(series.values[left])+(i-left)/(right-left)*(y(series.values[right])-y(series.values[left]));
+        missing.forEach(i=>{
+          const hit=svgElement('line',{x1:x(i-.5),y1:position(i-.5),x2:x(i+.5),y2:position(i+.5),stroke:'transparent','stroke-width':18,'pointer-events':'stroke',class:'chart-gap-hit','data-period':labels[i]});
+          notify(hit,options.missingDescription(series,i));group.append(hit);
+        });
+      }
+    }
     series.values.forEach((v,i) => {
-      if (!number(v)) return;
+      if (!number(v) || options.showPoints===false) return;
       const dot = svgElement('circle', {cx:x(i), cy:y(v), r:3.1, fill:series.color, stroke:'#fff'});
+      // Market charts show trends only, without native titles or popup handlers.
+      if(options.interactive===false){dot.setAttribute('pointer-events','none');group.append(dot);return;}
       const description = options.describe ? options.describe(series,i,v) : `${series.name}\n${labels[i]}\n${v.toLocaleString('ko-KR')} ${options.unit || ''}`;
-      dot.append(svgElement('title', {}, description));
+      // aria-label preserves the description without a duplicate native tooltip.
       const show = event => {tooltip.textContent=description;tooltip.hidden=false;tooltip.style.left=Math.max(8,Math.min(event.clientX+12,innerWidth-tooltip.offsetWidth-8))+'px';tooltip.style.top=Math.max(8,Math.min(event.clientY+12,innerHeight-tooltip.offsetHeight-8))+'px';};
       dot.setAttribute('tabindex','0');dot.setAttribute('role','button');dot.setAttribute('aria-label',description+' · 원문 보기');
       dot.addEventListener('focus',()=>{const r=dot.getBoundingClientRect();show({clientX:r.x,clientY:r.y});});dot.addEventListener('blur',()=>tooltip.hidden=true);
@@ -65,6 +90,7 @@ export function lineChart(container, sets, labels, options = {}) {
     });
   });
   container.replaceChildren(svg);
+
 }
 
 export function wordCloud(container, keywords, select) {
@@ -73,50 +99,54 @@ export function wordCloud(container, keywords, select) {
   if (!words.length) return empty(container, '공시 키워드 데이터가 없습니다.');
   const width=Math.max(160,container.clientWidth),height=Math.max(180,container.clientHeight || 310);
   const canvas=document.createElement('canvas').getContext('2d');
-  const font='Arial, BIGIN, sans-serif',palette=['#29103b','#191126','#6b1d25','#7a421f','#9a7625'];
+  const modern=document.documentElement?.dataset?.uiVersion==='new';
+  const font=modern?'Pretendard, BIGIN, sans-serif':'Arial, BIGIN, sans-serif';
+  const palette=modern?['#396BA3','#79539C','#287F73','#A9573F','#4B70A1','#A04D76','#8D702F','#357665','#6253A0','#446F89','#9B672E','#414F61']:['#29103b','#191126','#6b1d25','#7a421f','#9a7625'];
   // A mild power curve increases contrast while preserving score order.
   // Fit long labels using a shared coefficient, never shrinking one word alone.
   const sizeWeight=word=>(word.display_weight/100)**1.15;
-  let fontUnit=Math.min(70,width*.15);
-  for(const word of words){
-    const size=sizeWeight(word)*fontUnit;
+  // Measure once at a common reference size; scaling preserves every ratio.
+  const dimensions=words.map(word=>{
+    const size=sizeWeight(word)*100;
     canvas.font=`700 ${size}px ${font}`;
-    const measured=canvas.measureText(word.label).width;
-    if(measured>width*.86)fontUnit*=width*.86/measured;
-  }
-  const dimensions=(word,scale=1)=>{
-    const size=sizeWeight(word)*fontUnit;
-    canvas.font=`700 ${size}px ${font}`;
-    const measured=canvas.measureText(word.label).width;
-    return {size:size*scale,w:(measured+10)*scale,h:(size*1.25+8)*scale};
-  };
-  const layout=(layoutHeight,scale)=>{
+    return {size,w:canvas.measureText(word.label).width+10,h:size*1.25+8};
+  });
+  const layout=scale=>{
+    if(dimensions.reduce((sum,d)=>sum+d.w*d.h*scale*scale,0)>(width-12)*(height-16))return null;
     const placed=[];
-    for(const word of words){
-      const d=dimensions(word,scale), candidates=[];
-      // Search the entire canvas, nearest the elliptical centre first.
-      // The former spiral had a fixed radius even when the canvas grew.
-      for(let y=8+d.h/2;y<=layoutHeight-8-d.h/2;y+=4){
+    for(let i=0;i<words.length;i++){
+      const word=words[i],base=dimensions[i];
+      const d={size:base.size*scale,w:base.w*scale,h:base.h*scale};
+      let point=null,best=Infinity;
+      // Search the full area without allocating and sorting a large grid.
+      for(let y=8+d.h/2;y<=height-8-d.h/2;y+=4){
         for(let x=6+d.w/2;x<=width-6-d.w/2;x+=4){
-          candidates.push({x,y,distance:((x-width/2)/(width*.5))**2+((y-layoutHeight/2)/(layoutHeight*.5))**2});
+          const distance=((x-width/2)/(width*.5))**2+((y-height/2)/(height*.5))**2;
+          if(distance>=best)continue;
+          if(placed.some(p=>x-d.w/2<p.box.x+p.box.w&&x+d.w/2>p.box.x&&
+            y-d.h/2<p.box.y+p.box.h&&y+d.h/2>p.box.y))continue;
+          point={x,y};best=distance;
         }
       }
-      candidates.sort((a,b)=>a.distance-b.distance);
-      const point=candidates.find(({x,y})=>!placed.some(p=>
-        x-d.w/2<p.box.x+p.box.w&&x+d.w/2>p.box.x&&
-        y-d.h/2<p.box.y+p.box.h&&y+d.h/2>p.box.y));
       if(!point)return null;
       placed.push({word,size:d.size,cx:point.x,cy:point.y,
         box:{x:point.x-d.w/2,y:point.y-d.h/2,w:d.w,h:d.h}});
     }
     return placed;
   };
-  // Use one common scale for all words, preserving their computed size ratios.
-  let placed=null,scale=1;
-  while(!placed){
-    placed=layout(height,scale);
-    if(!placed)scale*=.95;
+  // Grow as well as shrink: find a large feasible common scale for this area.
+  let upper=Math.min(...dimensions.map(d=>Math.min((width-12)/d.w,(height-16)/d.h)));
+  let scale=upper,placed=layout(scale);
+  while(!placed){upper=scale;scale*=.8;placed=layout(scale);}
+  for(let attempt=0;attempt<8;attempt++){
+    const candidate=(scale+upper)/2,result=layout(candidate);
+    if(result){scale=candidate;placed=result;}else upper=candidate;
   }
+  // Centre the completed group, rather than leaving unused space on one side.
+  const left=Math.min(...placed.map(p=>p.box.x)),right=Math.max(...placed.map(p=>p.box.x+p.box.w));
+  const top=Math.min(...placed.map(p=>p.box.y)),bottom=Math.max(...placed.map(p=>p.box.y+p.box.h));
+  const dx=(width-left-right)/2,dy=(height-top-bottom)/2;
+  placed.forEach(p=>{p.cx+=dx;p.cy+=dy;p.box.x+=dx;p.box.y+=dy;});
   const svg=svgElement('svg',{viewBox:`0 0 ${width} ${height}`,style:`width:100%;height:${height}px;display:block`,role:'group','aria-label':`공시 키워드 ${placed.length}개. 선택하면 용어 해설과 공시 내용을 확인할 수 있습니다.`});
   // Paint every flame before every label so neighbouring text stays in front.
   placed.filter(p=>p.word.is_hot===true).forEach(({size,cx,cy})=>{
@@ -128,8 +158,24 @@ export function wordCloud(container, keywords, select) {
   placed.forEach(({word,size,cx,cy},i)=>{
     // Labels remain fully opaque and retain their click and keyboard handlers.
     const label=word.label,hot=word.is_hot===true;
-    const node=svgElement('text',{x:cx,y:cy,'text-anchor':'middle','dominant-baseline':'central','font-size':size,'font-family':font,'font-weight':700,fill:palette[i%palette.length],role:'button',tabindex:0,'aria-label':label+(hot?' 최근 상승 신호':'')+' 공시 설명 보기','aria-haspopup':'dialog'},label);
+    const node=svgElement('text',{x:cx,y:cy,'text-anchor':'middle','dominant-baseline':'central','font-size':size,'font-family':font,'font-weight':700,fill:palette[i%palette.length],role:'button',tabindex:0,'aria-label':label+(hot?(modern?' 최근 공시 언급 증가':' 최근 상승 신호'):'')+' 공시 설명 보기','aria-haspopup':'dialog'},label);
     node.addEventListener('click',()=>select(word));node.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select(word);}});svg.append(node);
   });
   container.replaceChildren(svg);
+  // The packing rectangles reserve font ascenders and generous spacing. Fit
+  // the actual rendered glyphs (including flame markers) to the viewport too.
+  if(typeof svg.getBBox==='function'){
+    const bounds=svg.getBBox();
+    if(bounds.width>0&&bounds.height>0){
+      const zoom=Math.min((width-16)/bounds.width,(height-16)/bounds.height);
+      const centerX=bounds.x+bounds.width/2,centerY=bounds.y+bounds.height/2;
+      [...svg.children].forEach(node=>{
+        const x=Number(node.getAttribute('x')),y=Number(node.getAttribute('y'));
+        const size=Number(node.getAttribute('font-size'));
+        node.setAttribute('x',width/2+(x-centerX)*zoom);
+        node.setAttribute('y',height/2+(y-centerY)*zoom);
+        node.setAttribute('font-size',size*zoom);
+      });
+    }
+  }
 }
